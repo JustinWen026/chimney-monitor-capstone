@@ -1,0 +1,7 @@
+path: D:/Programming/NCKU_Project/Smoke_Detection/datasets
+train: train/images
+val: valid/images
+test: test/images
+
+nc: 3
+names: ['black_smoky', 'chimney', 'white_smoky']
