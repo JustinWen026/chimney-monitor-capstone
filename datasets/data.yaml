@@ -1,7 +1,19 @@
-path: D:/Programming/NCKU_Project/Smoke_Detection/datasets
+# 1. 設定絕對路徑，確保 YOLO 永遠找得到檔案
+path: D:/Programming/NCKU_Project_V2/datasets 
+
+# 2. 指定相對路徑 (相對於上面的 path)
 train: train/images
 val: valid/images
-test: test/images
+test: test/images 
 
+# 3. 類別設定 (維持原樣)
 nc: 3
 names: ['black_smoky', 'chimney', 'white_smoky']
+
+# 下面 Roboflow 的資訊留著沒關係，不影響訓練
+roboflow:
+  workspace: justins-workspace-3mnwz
+  project: chimney-l1vf2-wvsig
+  version: 1
+  license: CC BY 4.0
+  url: https://universe.roboflow.com/justins-workspace-3mnwz/chimney-l1vf2-wvsig/dataset/1
