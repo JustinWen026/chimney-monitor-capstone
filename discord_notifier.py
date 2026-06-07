@@ -59,16 +59,16 @@ def _send_discord_worker(
                 ),
                 "color": 13632027,
                 "fields": [
-                    {"name": "🗓 告警時間",   "value": timestamp,                                "inline": True},
-                    {"name": "⏱ 持續時間",   "value": f"{duration} 秒（門檻：3.0 秒）",         "inline": True},
-                    {"name": "🏭 事件煙囪",   "value": chimney_id,                               "inline": True},
-                    {"name": "💨 煙霧類型",   "value": smoke_label,                              "inline": True},
-                    {"name": "📊 偵測密度",   "value": f"{density:.1%}（滑動視窗命中率）",       "inline": True},
-                    {"name": "🎯 偵測信心度", "value": f"{confidence:.2f}",                      "inline": True},
-                    {"name": "🔍 歸因判定",   "value": attr["cause"],                            "inline": False},
-                    {"name": "🚦 風險等級",   "value": attr["level"],                            "inline": True},
-                    {"name": "📋 建議處置",   "value": attr["action"],                           "inline": False},
-                    {"name": "🖼 事件截圖",   "value": screenshot_note,                          "inline": False},
+                    {"name": "🗓 告警時間",   "value": timestamp,                                 "inline": True},
+                    {"name": "⏱ 持續時間",   "value": f"{duration} 秒（門檻：3.0 秒）",          "inline": True},
+                    {"name": "🏭 事件煙囪",   "value": chimney_id,                                "inline": True},
+                    {"name": "💨 煙霧類型",   "value": smoke_label,                               "inline": True},
+                    {"name": "📊 偵測密度",   "value": f"{density:.1%}（滑動視窗命中率）",        "inline": True},
+                    {"name": "🎯 偵測信心度", "value": f"{confidence:.2f}",                       "inline": True},
+                    {"name": "🔍 歸因判定",   "value": attr["cause"],                             "inline": False},
+                    {"name": "🚦 風險等級",   "value": attr["level"],                             "inline": True},
+                    {"name": "📋 建議處置",   "value": attr["action"],                            "inline": False},
+                    {"name": "🖼 事件截圖",   "value": screenshot_note,                           "inline": False},
                     {
                         "name":  "⚙️ 系統狀態",
                         "value": "```\nSTATUS : TRIGGERED\nSOURCE : YOLOv11 + Temporal FSM + Sliding Window\n```",
@@ -76,7 +76,7 @@ def _send_discord_worker(
                     },
                 ],
                 "footer": {
-                    "text": "NCKU CSIE — AI Safety Monitor System • 本通報由自動化系統產生，請人員現場複核後執行處置"
+                    "text": "NCKU CSIE — AI Safety Monitor System v4 • 本通報由自動化系統產生，請人員現場複核後執行處置"
                 },
                 "timestamp": datetime.utcnow().isoformat() + "Z",
             }
@@ -103,15 +103,15 @@ def send_discord_alert_async(
     screenshot_path: str | None = None,
 ):
     """
-    外部接口：非阻塞執行緒發送，確保主推論迴圈維持高 FPS。
+    外部接口：非阻塞執行緒發送。
 
     Args:
         timestamp      : 觸發時間（可讀格式）
         duration       : 累積異常秒數
         smoke_type     : 'black_smoky' / 'white_smoky' / 'unknown'
-        chimney_id     : 觸發告警的煙囪識別編號（如 'Chimney-A2'）
+        chimney_id     : 觸發告警的煙囪穩定識別編號
         density        : 滑動視窗偵測密度（0.0~1.0）
-        confidence     : YOLO 平均信心度
+        confidence     : YOLO 最高信心度
         screenshot_path: 事件截圖路徑（選填）
     """
     thread = threading.Thread(
