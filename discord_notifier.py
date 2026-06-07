@@ -7,33 +7,98 @@ from datetime import datetime
 # =====================================================================
 DISCORD_WEBHOOK_URL = "YOUR_DISCORD_WEBHOOK_URL_HERE"
 
-def _send_discord_worker(timestamp, duration):
+# 歸因對照表：依煙霧類型對應工安判定
+ATTRIBUTION_MAP = {
+    "black_smoky": {
+        "cause":    "燃燒控制系統異常（不完全燃燒）",
+        "level":    "Level 3 — 高風險",
+        "action":   "立即通報設備維護組，暫停相關製程，進行鍋爐/燃燒器緊急檢修",
+    },
+    "white_smoky": {
+        "cause":    "製程洩漏或蒸氣溢散異常",
+        "level":    "Level 2 — 中風險",
+        "action":   "啟動洩漏排查程序，確認管線接頭與閥件密封狀態",
+    },
+    "unknown": {
+        "cause":    "煙霧類型待確認",
+        "level":    "Level 2 — 中風險",
+        "action":   "人員現場確認，待視覺特徵穩定後重新歸因",
+    },
+}
+
+
+def _send_discord_worker(timestamp: str, duration: float, smoke_type: str, screenshot_path: str | None = None):
     """
-    實際在背景執行緒中運行的 Discord 發送工作
+    實際在背景執行緒中運行的 Discord 發送工作（工安通報格式）
     """
     if DISCORD_WEBHOOK_URL == "YOUR_DISCORD_WEBHOOK_URL_HERE":
-        print(f"\n[{datetime.now().strftime('%H:%M:%S')}] ⚠️ [Discord] 尚未設定 Webhook URL，跳過發送。")
+        print(f"\n[{datetime.now().strftime('%H:%M:%S')}] ⚠️  [Discord] 尚未設定 Webhook URL，跳過發送。")
         return
 
-    # 專為成大資工專題與海報視覺美化設計的卡片排版
+    attr = ATTRIBUTION_MAP.get(smoke_type, ATTRIBUTION_MAP["unknown"])
+    smoke_label = "黑煙 (Black Smoky)" if smoke_type == "black_smoky" else \
+                  "白煙 (White Smoky)" if smoke_type == "white_smoky" else "待確認"
+
+    # 附加截圖說明
+    screenshot_note = f"`{screenshot_path}`" if screenshot_path else "（未附圖）"
+
     payload = {
-        "username": "石化園區 AI 偵測系統",
-        "avatar_url": "https://i.imgur.com/8nS47H3.png", # 機器人預設頭像
+        "username": "NCKU 石化園區安全監控系統",
+        "avatar_url": "https://i.imgur.com/8nS47H3.png",
         "embeds": [
             {
-                "title": "🚨 系統安全核心告警：偵測到異常排煙外溢 🚨",
-                "description": "系統偵測到廠區煙囪排煙持續時間已達臨界值，已自動歸因並觸發主動防護通報機制。",
-                "color": 15158332, # 鮮豔紅色邊條
+                "title": "⚠️ 工業安全告警通報：偵測到煙囪異常排煙",
+                "description": (
+                    "自動監控系統偵測到廠區煙囪排煙持續超過安全閾值。\n"
+                    "系統已完成初步歸因判定，請相關人員依處置建議立即因應。"
+                ),
+                "color": 13632027,  # 深橘紅，正式感強於純紅
                 "fields": [
-                    {"name": "📌 專案名稱", "value": "AI在石化園區工業煙囪煙霧安全偵測與其在事故歸因分析之研究", "inline": False},
-                    {"name": "🔥 異常事件", "value": "煙霧外溢 (Smoky Event Detected)", "inline": True},
-                    {"name": "⏱ 累積秒數", "value": f"`{duration} 秒` (門檻: 3.0秒)", "inline": True},
-                    {"name": "⏰ 觸發時間", "value": timestamp, "inline": False},
-                    {"name": "🔴 安全狀態", "value": "```diff\n- TRIGGERED\n```", "inline": False}
+                    {
+                        "name": "🗓 告警時間",
+                        "value": timestamp,
+                        "inline": True
+                    },
+                    {
+                        "name": "⏱ 持續時間",
+                        "value": f"{duration} 秒（門檻：3.0 秒）",
+                        "inline": True
+                    },
+                    {
+                        "name": "💨 煙霧類型",
+                        "value": smoke_label,
+                        "inline": True
+                    },
+                    {
+                        "name": "🔍 歸因判定",
+                        "value": attr["cause"],
+                        "inline": False
+                    },
+                    {
+                        "name": "🚦 風險等級",
+                        "value": attr["level"],
+                        "inline": True
+                    },
+                    {
+                        "name": "📋 建議處置",
+                        "value": attr["action"],
+                        "inline": False
+                    },
+                    {
+                        "name": "🖼 事件截圖",
+                        "value": screenshot_note,
+                        "inline": False
+                    },
+                    {
+                        "name": "⚙️ 系統狀態",
+                        "value": "```\nSTATUS : TRIGGERED\nSOURCE : AI Vision + State Machine\n```",
+                        "inline": False
+                    },
                 ],
                 "footer": {
-                    "text": "NCKU CSIE AI Safety Monitor System • 2026"
-                }
+                    "text": "NCKU CSIE — AI Safety Monitor System • 本通報由自動化系統產生，請人員現場複核後執行處置"
+                },
+                "timestamp": datetime.utcnow().isoformat() + "Z"
             }
         ]
     }
@@ -41,15 +106,26 @@ def _send_discord_worker(timestamp, duration):
     try:
         response = requests.post(DISCORD_WEBHOOK_URL, json=payload, timeout=5)
         if response.status_code in [200, 204]:
-            print(f"\n[{datetime.now().strftime('%H:%M:%S')}] 🔔 [Discord成功] 告警卡片已送達 Discord 頻道！")
+            print(f"\n[{datetime.now().strftime('%H:%M:%S')}] 🔔 [Discord 成功] 工安告警通報已送達頻道。")
         else:
-            print(f"\n[{datetime.now().strftime('%H:%M:%S')}] ❌ [Discord失敗] HTTP 錯誤代碼: {response.status_code}")
+            print(f"\n[{datetime.now().strftime('%H:%M:%S')}] ❌ [Discord 失敗] HTTP 狀態碼: {response.status_code}")
     except Exception as e:
-        print(f"\n[{datetime.now().strftime('%H:%M:%S')}] ❌ [Discord錯誤] 連線失敗: {e}")
+        print(f"\n[{datetime.now().strftime('%H:%M:%S')}] ❌ [Discord 錯誤] 連線失敗: {e}")
 
-def send_discord_alert_async(timestamp, duration):
+
+def send_discord_alert_async(timestamp: str, duration: float, smoke_type: str = "unknown", screenshot_path: str | None = None):
     """
-    外部接口：採用非阻塞執行緒發送，確保主推論迴圈維持極高 FPS
+    外部接口：採用非阻塞執行緒發送，確保主推論迴圈維持高 FPS。
+    
+    Args:
+        timestamp      : 觸發時間（可讀格式字串）
+        duration       : 累積異常秒數
+        smoke_type     : 煙霧類型標籤 ('black_smoky' / 'white_smoky' / 'unknown')
+        screenshot_path: 事件截圖存檔路徑（選填）
     """
-    thread = threading.Thread(target=_send_discord_worker, args=(timestamp, duration), daemon=True)
+    thread = threading.Thread(
+        target=_send_discord_worker,
+        args=(timestamp, duration, smoke_type, screenshot_path),
+        daemon=True
+    )
     thread.start()
