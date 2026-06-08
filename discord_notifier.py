@@ -71,12 +71,12 @@ def _send_discord_worker(
                     {"name": "🖼 事件截圖",   "value": screenshot_note,                           "inline": False},
                     {
                         "name":  "⚙️ 系統狀態",
-                        "value": "```\nSTATUS : TRIGGERED\nSOURCE : YOLOv11 + Temporal FSM + Sliding Window\n```",
+                        "value": "```\nSTATUS : TRIGGERED\nSOURCE : YOLOv11 + Temporal FSM + Emission Zone Attribution\n```",
                         "inline": False,
                     },
                 ],
                 "footer": {
-                    "text": "NCKU CSIE — AI Safety Monitor System v4 • 本通報由自動化系統產生，請人員現場複核後執行處置"
+                    "text": "NCKU CSIE — AI Safety Monitor System v5 • 本通報由自動化系統產生，請人員現場複核後執行處置"
                 },
                 "timestamp": datetime.utcnow().isoformat() + "Z",
             }

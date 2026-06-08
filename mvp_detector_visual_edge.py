@@ -1,17 +1,14 @@
 """
-mvp_detector_visual_edge_v4.py
+mvp_detector_visual_edge_v5.py
 NCKU CSIE — AI Petrochemical Chimney Safety Monitor
 
-v4 修正：
-  - 煙囪 ID 穩定化：改用「x 座標錨點分群」取代每幀順序編號。
-    同一根物理煙囪在不同幀的 box 中心 x 只要落在同一個 cluster 就給同一個 ID，
-    徹底解決 YOLO 漏偵某幀導致 ID 每幀跳動、FSM 一直 reset 的問題。
-  - 滑動視窗密度因此才能真正累積，不再因 ID 變動而清零。
-
-v4 修正（煙囪歸屬補丁）：
-  - 錨點 x 容差從 60px 放寬至 120px，容許煙霧遮住煙囪時 YOLO box 偏移。
-  - 煙霧 box 若水平重疊找不到對應煙囪，改用「最近錨點 x 距離」強制歸屬，
-    不再丟進 Unassigned，確保持續冒煙的煙囪一定有 FSM 累積。
+v5 修正（Event-Locking 歸因策略）：
+  - 煙霧歸屬改為「事件鎖定（Event-Locking）」：只在煙霧首次被偵測到的那幾幀
+    判斷來源煙囪（對應 FSM 的 NORMAL→ACCUMULATING 轉換瞬間），一旦鎖定
+    就不再更改，直到煙霧消失事件結束。完全消除持續飄移導致的誤歸屬問題。
+  - 移除每幀動態關聯邏輯，改為直接向已鎖定的 FSM 推送 smoke 偵測結果。
+  - 移除視覺雜亂的感應區框線（Zone visualization）。
+  - Alert Fatigue 統計保留：執行摘要顯示 FSM 告警抑制率。
 """
 
 import os
@@ -61,22 +58,16 @@ os.makedirs(SCREENSHOT_DIR, exist_ok=True)
 # ==============================================================================
 class ChimneyAnchorManager:
     """
-    維護一份「已知煙囪錨點」清單（anchor_cx: 中心 x 均值, label: 'Chimney-A'...）。
-    每幀偵測到的 chimney box，找最近的錨點（距離 < CHIMNEY_X_TOLERANCE）就沿用其 ID，
-    否則新建錨點並分配下一個字母。
-    若某幀 YOLO 完全漏偵某根煙囪，該錨點繼續保留，下幀恢復偵測後 ID 不變。
+    維護已知煙囪錨點（x 座標 EMA），提供穩定的煙囪 ID。
+    「煙霧歸屬」不再由此類負責，改由 Event-Locking 機制在 FSM 層處理。
     """
 
     def __init__(self):
-        # list of {"label": str, "cx": float}  (cx 為歷史平均，做 EMA 平滑)
-        self._anchors: list[dict] = []
-        self._counter = 0          # 已分配標籤數量（A, B, C...）
+        self._anchors: list[dict] = []   # [{"label": str, "cx": float}]
+        self._counter = 0
 
     def assign(self, chimney_boxes_xyxy: list[tuple]) -> list[tuple[tuple, str]]:
-        """
-        輸入: 本幀所有 chimney xyxy box
-        輸出: list of (xyxy, stable_chimney_id)
-        """
+        """回傳 list of (xyxy, stable_chimney_id)，並更新錨點 EMA。"""
         result = []
         for box in chimney_boxes_xyxy:
             cx = (box[0] + box[2]) / 2.0
@@ -86,26 +77,26 @@ class ChimneyAnchorManager:
                 self._counter += 1
                 self._anchors.append({"label": label, "cx": cx})
                 matched = self._anchors[-1]
-                print(f"[{datetime.now().strftime('%H:%M:%S')}] [ANCHOR] 新增煙囪錨點: {label}  cx={cx:.0f}px")
+                print(f"[{datetime.now().strftime('%H:%M:%S')}] [ANCHOR] 新增煙囪: {label}  cx={cx:.0f}px")
             else:
-                # EMA 更新錨點 x（α=0.1，慢速追蹤）
                 matched["cx"] = matched["cx"] * 0.9 + cx * 0.1
             result.append((box, matched["label"]))
-
-        # 按 cx 排序，讓 A 永遠是最左邊（視覺上直覺）
-        result.sort(key=lambda item: (self._label_to_idx(item[1])))
+        result.sort(key=lambda item: self._label_to_idx(item[1]))
         return result
 
-    def all_labels(self) -> list[str]:
-        return [a["label"] for a in self._anchors]
+    def find_nearest_label(self, cx: float) -> str | None:
+        """找最近的錨點 label（不限容差，供 Event-Locking 使用）。"""
+        if not self._anchors:
+            return None
+        nearest = min(self._anchors, key=lambda a: abs(a["cx"] - cx))
+        return nearest["label"] if abs(nearest["cx"] - cx) < CHIMNEY_SMOKE_FALLBACK_MAX_DIST else None
 
     def _find_anchor(self, cx: float):
         best, best_dist = None, float("inf")
         for a in self._anchors:
             d = abs(a["cx"] - cx)
             if d < best_dist:
-                best_dist = d
-                best = a
+                best_dist, best = d, a
         return best if best_dist < CHIMNEY_X_TOLERANCE else None
 
     def _label_to_idx(self, label: str) -> int:
@@ -123,7 +114,7 @@ DIVIDER = "=" * 110
 def print_banner():
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print(DIVIDER)
-    print(f"  NCKU CSIE — AI Petrochemical Chimney Safety Monitor v4  |  啟動: {now}")
+    print(f"  NCKU CSIE — AI Petrochemical Chimney Safety Monitor v5  |  啟動: {now}")
     print(f"  模型   : {MODEL_PATH}")
     print(f"  影像   : {VIDEO_PATH}")
     print(f"  閾值   : 持續>{ALERT_THRESHOLD_SEC}s  密度>{DENSITY_THRESHOLD:.0%}/{WINDOW_SEC}s  信心>{MIN_CONFIDENCE}")
@@ -132,52 +123,22 @@ def print_banner():
     print(DIVIDER + "\n")
 
 
-def vertical_overlap_ratio(smoke_box, chimney_box):
-    """煙霧 box 與煙囪 box 的水平（x 軸）重疊比，用於空間歸屬。"""
-    sx1, _, sx2, _ = smoke_box
-    cx1, _, cx2, _ = chimney_box
-    overlap = max(0, min(sx2, cx2) - max(sx1, cx1))
-    return overlap / max(sx2 - sx1, 1)
-
-
-def associate_smoke_to_chimney(smoke_boxes, chimney_id_boxes, anchor_mgr):
+def find_smoke_source(smoke_boxes, anchor_mgr) -> tuple[str | None, str | None, float]:
     """
-    smoke_boxes     : list of (xyxy, smoke_type, confidence)
-    chimney_id_boxes: list of (xyxy, chimney_id)
-    anchor_mgr      : ChimneyAnchorManager（用於 fallback 最近錨點查詢）
-
-    歸屬策略（兩段式）：
-      1. 優先用水平重疊比（vertical_overlap_ratio）找對應煙囪。
-      2. 若無煙囪 box 有足夠重疊，改用錨點 cx 距離做 fallback 強制歸屬，
-         確保煙霧遮住煙囪導致 YOLO 漏偵時，煙霧仍能歸屬到正確的 FSM。
-    回傳: dict { chimney_id: list of (smoke_type, confidence) }
+    Event-Locking 來源判斷（只在事件開始時呼叫一次）。
+    看所有偵測到的煙霧 box，找底部中心 x 最靠近哪根煙囪錨點，回傳該煙囪 ID。
+    回傳: (chimney_id, smoke_type, confidence)
     """
-    result = {cid: [] for _, cid in chimney_id_boxes}
-    result["Unassigned"] = []
+    if not smoke_boxes or not anchor_mgr._anchors:
+        return None, None, 0.0
 
-    for s_box, s_type, s_conf in smoke_boxes:
-        s_cx = (s_box[0] + s_box[2]) / 2.0
+    # 取信心度最高的那個煙霧 box 作為代表
+    best_smoke = max(smoke_boxes, key=lambda x: x[2])
+    s_box, s_type, s_conf = best_smoke
+    s_bottom_cx = (s_box[0] + s_box[2]) / 2.0
 
-        # --- 第一段：水平重疊優先 ---
-        best_cid, best_score = None, CHIMNEY_SMOKE_OVERLAP_THRESH
-        for c_box, c_id in chimney_id_boxes:
-            score = vertical_overlap_ratio(s_box, c_box)
-            if score > best_score:
-                best_score, best_cid = score, c_id
-
-        # --- 第二段：fallback — 用錨點 cx 距離找最近煙囪 ---
-        if best_cid is None and anchor_mgr._anchors:
-            nearest = min(anchor_mgr._anchors, key=lambda a: abs(a["cx"] - s_cx))
-            dist = abs(nearest["cx"] - s_cx)
-            if dist < CHIMNEY_SMOKE_FALLBACK_MAX_DIST:
-                best_cid = nearest["label"]
-
-        target = best_cid if best_cid else "Unassigned"
-        if target not in result:
-            result[target] = []
-        result[target].append((s_type, s_conf))
-
-    return result
+    cid = anchor_mgr.find_nearest_label(s_bottom_cx)
+    return cid, s_type, s_conf
 
 
 def save_screenshot(frame, chimney_id: str, smoke_type: str) -> str:
@@ -409,8 +370,10 @@ def main():
     anchor_mgr   = ChimneyAnchorManager()
     chimney_fsms : dict[str, ChimneyFSM] = {}   # { chimney_id: ChimneyFSM }
 
-    frame_counter = 0
-    display_fps   = 0.0
+    frame_counter          = 0
+    display_fps            = 0.0
+    baseline_trigger_count = 0   # 無演算法 baseline：每幀有煙就算一次
+    fsm_suppressed_count   = 0   # 被狀態機抑制（有煙但未 TRIGGERED）的幀數
 
     print(DIVIDER)
     print("  🚀 推論迴圈啟動 — 按下 [Q] 結束")
@@ -450,6 +413,10 @@ def main():
             elif cls_name == 'chimney':
                 raw_chimney_boxes.append(xyxy)
 
+        # ── Alert Fatigue 統計（baseline：有煙霧偵測到就算一次）──────────────
+        if smoke_boxes:
+            baseline_trigger_count += 1
+
         # ── 穩定化煙囪 ID ─────────────────────────────────────────────────────
         chimney_id_boxes = anchor_mgr.assign(raw_chimney_boxes)  # [(xyxy, stable_id), ...]
 
@@ -458,28 +425,41 @@ def main():
             if cid not in chimney_fsms:
                 chimney_fsms[cid] = ChimneyFSM(cid)
 
-        # ── 空間關聯 + 狀態機更新 ─────────────────────────────────────────────
-        t_sm_start   = time.perf_counter()
-        associations = associate_smoke_to_chimney(smoke_boxes, chimney_id_boxes, anchor_mgr)
+        # ── Event-Locking 狀態機更新 ──────────────────────────────────────────
+        # 核心邏輯：只在煙霧「新出現」瞬間（NORMAL→ACCUMULATING）判斷來源煙囪，
+        # 一旦鎖定就不再重新判斷，直到事件結束（煙消失→NORMAL）。
+        # 這樣無論煙霧如何飄移，歸屬不會因為 YOLO box 位置變動而改變。
+        t_sm_start = time.perf_counter()
+        has_any_smoke = len(smoke_boxes) > 0
 
         for cid, fsm in chimney_fsms.items():
-            hits = associations.get(cid, [])
-            if hits:
-                best_type, best_conf = max(hits, key=lambda x: x[1])
-                triggered, alert = fsm.update(current_time, True, best_type, best_conf)
+            if fsm.state == "NORMAL":
+                # 只有 NORMAL 狀態才需要判斷「煙從哪來」
+                if has_any_smoke:
+                    src_cid, src_type, src_conf = find_smoke_source(smoke_boxes, anchor_mgr)
+                    if src_cid == cid:
+                        # 這根煙囪是煙霧來源 → 觸發本 FSM
+                        triggered, alert = fsm.update(current_time, True, src_type, src_conf)
+                    else:
+                        triggered, alert = fsm.update(current_time, False, None, 0.0)
+                else:
+                    triggered, alert = fsm.update(current_time, False, None, 0.0)
             else:
-                triggered, alert = fsm.update(current_time, False, None, 0.0)
+                # ACCUMULATING / TRIGGERED：已鎖定來源，只需告知「有沒有煙」
+                # 不再重新判斷是誰的煙，避免飄移誤解除
+                triggered, alert = fsm.update(current_time, has_any_smoke,
+                                               fsm.active_type, fsm.last_conf)
 
             if triggered and alert:
                 shot = save_screenshot(annotated_frame, alert["chimney_id"], alert["smoke_type"])
                 print(f"[{datetime.now().strftime('%H:%M:%S')}] 📸 截圖: {shot}")
                 send_discord_alert_async(
-                    timestamp     = alert["timestamp"],
-                    duration      = alert["duration"],
-                    smoke_type    = alert["smoke_type"],
-                    chimney_id    = alert["chimney_id"],
-                    density       = alert["density"],
-                    confidence    = alert["confidence"],
+                    timestamp       = alert["timestamp"],
+                    duration        = alert["duration"],
+                    smoke_type      = alert["smoke_type"],
+                    chimney_id      = alert["chimney_id"],
+                    density         = alert["density"],
+                    confidence      = alert["confidence"],
                     screenshot_path = shot,
                 )
 
@@ -493,7 +473,7 @@ def main():
         if frame_counter % 10 == 0:
             print_timing(t_pre, t_inf, t_post, t_state_ms, t_draw_ms, display_fps)
 
-        cv2.imshow("NCKU Petrochemical Chimney — AI Safety Monitor v4", annotated_frame)
+        cv2.imshow("NCKU Petrochemical Chimney — AI Safety Monitor v5", annotated_frame)
         if cv2.waitKey(wait_ms) & 0xFF == ord('q'):
             print(f"\n\n[{datetime.now().strftime('%H:%M:%S')}] [EXIT] 使用者手動結束。")
             break
@@ -503,9 +483,17 @@ def main():
     print(f"[{datetime.now().strftime('%H:%M:%S')}] [EXIT] 資源釋放完畢。\n")
 
     # ── 執行摘要 ──────────────────────────────────────────────────────────────
+    discord_total = sum(1 for fsm in chimney_fsms.values() if fsm.last_alert_t > 0)
+    suppression_rate = (1 - discord_total / baseline_trigger_count) * 100 if baseline_trigger_count > 0 else 0
+
     print(DIVIDER)
-    print("  執行摘要")
+    print("  執行摘要 — Alert Fatigue Reduction 數據")
     print(DIVIDER)
+    print(f"  處理總幀數          : {frame_counter} 幀")
+    print(f"  [Baseline] 有煙幀數  : {baseline_trigger_count} 次（無演算法情境下每幀觸發一次告警）")
+    print(f"  [v5 FSM]  Discord 告警: {discord_total} 次")
+    print(f"  告警抑制率          : {suppression_rate:.2f}%")
+    print()
     for cid, fsm in chimney_fsms.items():
         print(f"  {cid}: 最終狀態={fsm.state}  最終持續={fsm.duration:.2f}s  最終密度={fsm.density():.1%}")
     print(DIVIDER + "\n")
