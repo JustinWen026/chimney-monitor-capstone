@@ -71,12 +71,12 @@ def _send_discord_worker(
                     {"name": "🖼 事件截圖",   "value": screenshot_note,                           "inline": False},
                     {
                         "name":  "⚙️ 系統狀態",
-                        "value": "```\nSTATUS : TRIGGERED\nSOURCE : YOLOv11 + Temporal FSM + Emission Zone Attribution\n```",
+                        "value": "```\nSTATUS : TRIGGERED\nSOURCE : YOLOv11 + Temporal FSM + Temporal Onset Priority\n```",
                         "inline": False,
                     },
                 ],
                 "footer": {
-                    "text": "NCKU CSIE — AI Safety Monitor System v5 • 本通報由自動化系統產生，請人員現場複核後執行處置"
+                    "text": "NCKU CSIE — AI Safety Monitor System v6 • 本通報由自動化系統產生，請人員現場複核後執行處置"
                 },
                 "timestamp": datetime.utcnow().isoformat() + "Z",
             }
@@ -102,18 +102,6 @@ def send_discord_alert_async(
     confidence: float = 0.0,
     screenshot_path: str | None = None,
 ):
-    """
-    外部接口：非阻塞執行緒發送。
-
-    Args:
-        timestamp      : 觸發時間（可讀格式）
-        duration       : 累積異常秒數
-        smoke_type     : 'black_smoky' / 'white_smoky' / 'unknown'
-        chimney_id     : 觸發告警的煙囪穩定識別編號
-        density        : 滑動視窗偵測密度（0.0~1.0）
-        confidence     : YOLO 最高信心度
-        screenshot_path: 事件截圖路徑（選填）
-    """
     thread = threading.Thread(
         target=_send_discord_worker,
         args=(timestamp, duration, smoke_type, chimney_id, density, confidence, screenshot_path),
