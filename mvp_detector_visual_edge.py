@@ -1,11 +1,10 @@
 """
-mvp_detector_visual_edge_v6_2.py
+mvp_detector_visual_edge_v6_3.py
 NCKU CSIE — AI Petrochemical Chimney Safety Monitor
 
-v6.2 升級說明（終端機排版優化 + 即時消融實驗連動）：
-  - 完美修復 v6.1 終端機日誌與 LLM Stream 混雜導致排版死結的問題。
-  - 💡 當狀態機觸發 TRIGGERED 時，自動異步啟動無痛 A/B 效能對比實驗。
-  - 實驗完畢後，直接在 Terminal 印出完美的「專題展數據對比表」，兩組文字分析自動落地。
+v6.3 升級說明（截圖格式修正 + DC 上傳對齊）：
+  - 截圖格式從 .jpg 改為 .png，與 discord_notifier_v7 的 multipart 上傳格式一致。
+  - 觸發告警時截圖會直接附圖上傳至 Discord 頻道，不再只傳路徑文字。
 """
 
 import os
@@ -15,7 +14,7 @@ import collections
 from datetime import datetime
 from ultralytics import YOLO
 
-from discord_notifier import send_discord_alert_async
+from discord_notifier import send_discord_alert_async  # v7: 支援截圖直接上傳 DC
 # 💡 串接亮點：引入全新的消融實驗引擎
 from run_mcp_agent import trigger_ablation_study_async
 
@@ -99,9 +98,9 @@ DIVIDER = "=" * 110
 def print_banner():
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print(DIVIDER)
-    print(f"  NCKU CSIE — AI Petrochemical Chimney Safety Monitor v6.2 |  啟動: {now}")
+    print(f"  NCKU CSIE — AI Petrochemical Chimney Safety Monitor v6.3 |  啟動: {now}")
     print(f"  模型   : {MODEL_PATH}")
-    print(f"  [v6.2] 整合自動端到端消融實驗 (Ablation Study) 與 Terminal 視覺美化修正版")
+    print(f"  [v6.3] 截圖 PNG 格式修正，Discord 截圖直接附圖上傳")
     print(DIVIDER + "\n")
 
 
@@ -126,7 +125,7 @@ def find_smoke_source(smoke_boxes, anchor_mgr) -> tuple[str | None, str | None, 
 def save_screenshot(frame, chimney_id: str, smoke_type: str) -> str:
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     safe_id = chimney_id.replace(" ", "_").replace("/", "-")
-    filename = f"alert_{safe_id}_{smoke_type}_{ts}.jpg"
+    filename = f"alert_{safe_id}_{smoke_type}_{ts}.png"   # v6.3: 改為 PNG，與 discord_notifier_v7 的上傳格式一致
     path = os.path.join(SCREENSHOT_DIR, filename)
     cv2.imwrite(path, frame)
     return path
@@ -371,7 +370,7 @@ def main():
         if frame_counter % 10 == 0:
             print_timing(t_pre, t_inf, t_post, t_state_ms, t_draw_ms, display_fps)
 
-        cv2.imshow("NCKU Petrochemical Chimney — AI Safety Monitor v6.2", annotated_frame)
+        cv2.imshow("NCKU Petrochemical Chimney — AI Safety Monitor v6.3", annotated_frame)
         if cv2.waitKey(wait_ms) & 0xFF == ord('q'):
             break
 
