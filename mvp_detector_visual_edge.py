@@ -1,12 +1,11 @@
 """
-mvp_detector_visual_edge_v6_1.py
+mvp_detector_visual_edge_v6_2.py
 NCKU CSIE — AI Petrochemical Chimney Safety Monitor
 
-v6.1 升級說明（端到端大聯調）：
-  - 完美繼承 v6 的 Temporal Onset Priority 與 Sliding Window 狀態機架構。
-  - 💡 整合 MCP 通囪協定代理：在狀態機觸發 TRIGGERED 且滿足冷卻時間時，
-    除了非同步發送 Discord 告警外，同步觸發 run_mcp_agent_v2 的本地 LLM 大模型工安歸因分析任務。
-  - 採用雙執行緒隔離設計，大模型的推論完全在背景守護線程進行，主視覺視窗（OpenCV）維持流暢刷新，FPS 零干擾。
+v6.2 升級說明（終端機排版優化 + 即時消融實驗連動）：
+  - 完美修復 v6.1 終端機日誌與 LLM Stream 混雜導致排版死結的問題。
+  - 💡 當狀態機觸發 TRIGGERED 時，自動異步啟動無痛 A/B 效能對比實驗。
+  - 實驗完畢後，直接在 Terminal 印出完美的「專題展數據對比表」，兩組文字分析自動落地。
 """
 
 import os
@@ -17,8 +16,8 @@ from datetime import datetime
 from ultralytics import YOLO
 
 from discord_notifier import send_discord_alert_async
-# 💡 串接亮點：引入我們剛剛寫好的完全體封裝版 MCP Client
-from run_mcp_agent import trigger_mcp_analysis_async
+# 💡 串接亮點：引入全新的消融實驗引擎
+from run_mcp_agent import trigger_ablation_study_async
 
 # ==============================================================================
 # 1. 系統參數配置
@@ -28,15 +27,13 @@ VIDEO_PATH          = os.path.join(PROJECT_ROOT, "clean_video_perfect.mp4")
 MODEL_PATH          = os.path.join(PROJECT_ROOT, r"runs\detect\ncku_smoke_8to2_v2\weights\best.pt")
 SCREENSHOT_DIR      = os.path.join(PROJECT_ROOT, "alerts")
 
-ALERT_THRESHOLD_SEC = 3.0    # 狀態機持續時間閾值（秒）
-ALERT_COOLDOWN_SEC  = 60.0   # 每根煙囪的告警冷卻時間（秒）
-MIN_CONFIDENCE      = 0.45   # 低於此信心度不納入狀態機
+ALERT_THRESHOLD_SEC = 3.0    
+ALERT_COOLDOWN_SEC  = 60.0   
+MIN_CONFIDENCE      = 0.45   
 
-# 滑動視窗密度統計
-WINDOW_SEC        = 5.0    # 視窗長度（秒）
-DENSITY_THRESHOLD = 0.40   # 視窗內命中率門檻
+WINDOW_SEC        = 5.0    
+DENSITY_THRESHOLD = 0.40   
 
-# 煙囪 ID 穩定化參數
 CHIMNEY_X_TOLERANCE         = 120   
 CHIMNEY_SMOKE_FALLBACK_DIST = 350   
 
@@ -102,19 +99,16 @@ DIVIDER = "=" * 110
 def print_banner():
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print(DIVIDER)
-    print(f"  NCKU CSIE — AI Petrochemical Chimney Safety Monitor v6.1 |  啟動: {now}")
+    print(f"  NCKU CSIE — AI Petrochemical Chimney Safety Monitor v6.2 |  啟動: {now}")
     print(f"  模型   : {MODEL_PATH}")
-    print(f"  影像   : {VIDEO_PATH}")
-    print(f"  [v6.1] 整合邊緣端 Anthropic MCP 協定管道與 Ollama (Qwen2.5-7B) 工安生成式歸因代理")
+    print(f"  [v6.2] 整合自動端到端消融實驗 (Ablation Study) 與 Terminal 視覺美化修正版")
     print(DIVIDER + "\n")
 
 
 def find_smoke_source(smoke_boxes, anchor_mgr) -> tuple[str | None, str | None, float]:
     if not smoke_boxes or not anchor_mgr._anchors:
         return None, None, 0.0
-
     best_cid, best_type, best_conf, best_dist = None, None, 0.0, float("inf")
-
     for s_box, s_type, s_conf in smoke_boxes:
         s_bottom_cx = (s_box[0] + s_box[2]) / 2.0
         cid = anchor_mgr.find_nearest_label(s_bottom_cx)
@@ -126,7 +120,6 @@ def find_smoke_source(smoke_boxes, anchor_mgr) -> tuple[str | None, str | None, 
         dist = abs(anchor_cx - s_bottom_cx)
         if dist < best_dist:
             best_dist, best_cid, best_type, best_conf = dist, cid, s_type, s_conf
-
     return best_cid, best_type, best_conf
 
 
@@ -187,28 +180,19 @@ class ChimneyFSM:
                 self.smoke_start_t = t
                 self.active_type   = smoke_type
                 self.last_conf     = confidence
-                print(
-                    f"\n[{datetime.now().strftime('%H:%M:%S')}] 🚨 [{self.chimney_id}] "
-                    f"NORMAL ➔ ACCUMULATING  |  煙霧: {smoke_type}  信心: {confidence:.2f}"
-                )
+                print(f"\n[{datetime.now().strftime('%H:%M:%S')}] 🚨 [{self.chimney_id}] NORMAL ➔ ACCUMULATING")
 
         elif self.state == "ACCUMULATING":
             if has_smoke:
                 self.duration  = t - self.smoke_start_t
                 self.last_conf = max(self.last_conf, confidence)
-                print(
-                    f"\r[{datetime.now().strftime('%H:%M:%S')}] [{self.chimney_id}] "
-                    f"⏳ 蓄能: {self.duration:.2f}s/{ALERT_THRESHOLD_SEC}s  "
-                    f"密度: {d:.1%}  信心: {confidence:.2f}   ",
-                    end="", flush=True,
-                )
+                print(f"\r[{datetime.now().strftime('%H:%M:%S')}] [{self.chimney_id}] ⏳ 蓄能: {self.duration:.2f}s  密度: {d:.1%}", end="", flush=True)
+                
                 if self.duration >= ALERT_THRESHOLD_SEC and d >= DENSITY_THRESHOLD:
                     self.state = "TRIGGERED"
                     readable_t = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                    print(
-                        f"\n[{readable_t}] 🔥 [{self.chimney_id}] ➔ TRIGGERED  "
-                        f"時間:{self.duration:.2f}s  密度:{d:.1%}  信心:{self.last_conf:.2f}"
-                    )
+                    print(f"\n[{readable_t}] 🔥 [{self.chimney_id}] ➔ TRIGGERED")
+                    
                     if (t - self.last_alert_t) > ALERT_COOLDOWN_SEC:
                         self.last_alert_t = t
                         triggered_new = True
@@ -220,32 +204,16 @@ class ChimneyFSM:
                             "density":    d,
                             "confidence": round(self.last_conf, 2),
                         }
-                    else:
-                        remaining = ALERT_COOLDOWN_SEC - (t - self.last_alert_t)
-                        print(
-                            f"[{datetime.now().strftime('%H:%M:%S')}] 🛡️  [{self.chimney_id}] "
-                            f"冷卻中，剩餘 {remaining:.0f}s，跳過告警觸發。"
-                        )
             else:
-                print(
-                    f"\n[{datetime.now().strftime('%H:%M:%S')}] 🟢 [{self.chimney_id}] "
-                    f"煙霧消失 → NORMAL  蓄能: {self.duration:.2f}s（未達閾值）"
-                )
+                print(f"\n[{datetime.now().strftime('%H:%M:%S')}] 🟢 [{self.chimney_id}] 煙霧消失 → NORMAL")
                 self._reset()
 
         elif self.state == "TRIGGERED":
             if has_smoke:
                 self.duration = t - self.smoke_start_t
-                print(
-                    f"\r[{datetime.now().strftime('%H:%M:%S')}] [{self.chimney_id}] "
-                    f"🔴 警報持續！累計: {self.duration:.2f}s  密度: {d:.1%}   ",
-                    end="", flush=True,
-                )
+                print(f"\r[{datetime.now().strftime('%H:%M:%S')}] [{self.chimney_id}] 🔴 警報持續！累計: {self.duration:.2f}s  密度: {d:.1%}", end="", flush=True)
             else:
-                print(
-                    f"\n[{datetime.now().strftime('%H:%M:%S')}] 🟢 [{self.chimney_id}] "
-                    f"事件解除 → NORMAL  最終持續: {self.duration:.2f}s"
-                )
+                print(f"\n[{datetime.now().strftime('%H:%M:%S')}] 🟢 [{self.chimney_id}] 事件解除 → NORMAL")
                 self._reset()
 
         return triggered_new, alert_info
@@ -295,10 +263,7 @@ def draw_ui(frame, chimney_fsms: dict, frame_counter: int, fps: float):
             cv2.rectangle(frame, (bx, by), (bx + fw, by + bh), color, -1)
 
         d_val = fsm.density()
-        cv2.putText(
-            frame, f"T:{fsm.duration:.1f}s  D:{d_val:.0%}  Conf:{fsm.last_conf:.2f}",
-            (10, y + 36), font, 0.35, (190, 190, 190), thin, cv2.LINE_AA,
-        )
+        cv2.putText(frame, f"T:{fsm.duration:.1f}s  D:{d_val:.0%}  Conf:{fsm.last_conf:.2f}", (10, y + 36), font, 0.35, (190, 190, 190), thin, cv2.LINE_AA)
 
         if fsm.state == "TRIGGERED":
             attr = ATTRIBUTION_TEXT.get(fsm.active_type or "unknown", ATTRIBUTION_TEXT["unknown"])
@@ -316,9 +281,7 @@ def draw_ui(frame, chimney_fsms: dict, frame_counter: int, fps: float):
 # ==============================================================================
 def main():
     print_banner()
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] [INIT] 初始化 YOLOv11 推論引擎...")
     model = YOLO(MODEL_PATH)
-
     cap = cv2.VideoCapture(VIDEO_PATH)
     if not cap.isOpened():
         print("❌ 無法開啟影片！")
@@ -326,18 +289,10 @@ def main():
 
     video_fps = cap.get(cv2.CAP_PROP_FPS)
     wait_ms   = int(1000 / video_fps) if video_fps > 0 else 30
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] [INIT] 影片 FPS={video_fps:.1f}  等待={wait_ms}ms\n")
 
     anchor_mgr   = ChimneyAnchorManager()
     chimney_fsms : dict[str, ChimneyFSM] = {}
-
-    frame_counter          = 0
-    display_fps            = 0.0
-    baseline_trigger_count = 0
-
-    print(DIVIDER)
-    print("  🚀 推論迴圈啟動 — 按下 [Q] 結束")
-    print(DIVIDER + "\n")
+    frame_counter, display_fps = 0, 0.0
 
     while cap.isOpened():
         ret, frame = cap.read()
@@ -347,7 +302,6 @@ def main():
         frame_counter += 1
         current_time = time.time()
 
-        # ── YOLO 推論 ────────────────────────────────────────────────────────
         results         = model(frame, device=0, verbose=False)
         annotated_frame = results[0].plot()
 
@@ -358,7 +312,6 @@ def main():
             total_pipe  = t_pre + t_inf + t_post
             display_fps = 1000.0 / total_pipe if total_pipe > 0 else 0.0
 
-        # ── 解析偵測結果 ──────────────────────────────────────────────────────
         raw_chimney_boxes = []
         smoke_boxes       = []
 
@@ -372,16 +325,11 @@ def main():
             elif cls_name == 'chimney':
                 raw_chimney_boxes.append(xyxy)
 
-        if smoke_boxes:
-            baseline_trigger_count += 1
-
-        # ── 穩定化煙囪 ID ─────────────────────────────────────────────────────
         chimney_id_boxes = anchor_mgr.assign(raw_chimney_boxes)
         for _, cid in chimney_id_boxes:
             if cid not in chimney_fsms:
                 chimney_fsms[cid] = ChimneyFSM(cid)
 
-        # ── Temporal Onset Priority 狀態機更新 ────────────────────────────────
         t_sm_start = time.perf_counter()
         has_any_smoke = len(smoke_boxes) > 0
 
@@ -389,45 +337,22 @@ def main():
         any_active  = len(active_fsms) > 0
 
         if any_active:
-            # ── 有活躍事件：Event-Locking 模式 ──────────────────────────────
             for cid, fsm in chimney_fsms.items():
                 if fsm.state != "NORMAL":
-                    triggered, alert = fsm.update(
-                        current_time, has_any_smoke, fsm.active_type, fsm.last_conf
-                    )
+                    triggered, alert = fsm.update(current_time, has_any_smoke, fsm.active_type, fsm.last_conf)
                 else:
                     triggered, alert = fsm.update(current_time, False, None, 0.0)
 
-                # 💡 串接亮點：當狀態機確認觸發新一輪告警時
                 if triggered and alert:
                     shot = save_screenshot(annotated_frame, alert["chimney_id"], alert["smoke_type"])
-                    print(f"[{datetime.now().strftime('%H:%M:%S')}] 📸 成功儲存事件截圖: {shot}")
+                    send_discord_alert_async(alert["timestamp"], alert["duration"], alert["smoke_type"], alert["chimney_id"], alert["density"], alert["confidence"], shot)
                     
-                    # 1. 觸發你原本的 Discord 非同步通報
-                    send_discord_alert_async(
-                        timestamp       = alert["timestamp"],
-                        duration        = alert["duration"],
-                        smoke_type      = alert["smoke_type"],
-                        chimney_id      = alert["chimney_id"],
-                        density         = alert["density"],
-                        confidence      = alert["confidence"],
-                        screenshot_path = shot,
-                    )
-                    
-                    # 2. 💡 大聯調核心：同步驅動獨立執行緒的 MCP 本地大模型歸因分析代理
-                    # 傳入當前的告警字典數據，背景執行緒會自動與 mcp_server 通訊、呼叫工具、並在終端機 Stream 輸出報告
-                    trigger_mcp_analysis_async(alert)
+                    # 💡 串接優化：異步連動全新的 A/B 測試引擎
+                    trigger_ablation_study_async(alert)
                     
         else:
-            # ── 無活躍事件：Onset Priority 初始鎖定 ──────────────────────────
             if has_any_smoke:
                 src_cid, src_type, src_conf = find_smoke_source(smoke_boxes, anchor_mgr)
-                if src_cid:
-                    print(
-                        f"\n[{datetime.now().strftime('%H:%M:%S')}] [LOCK] "
-                        f"Temporal Onset Priority 鎖定事件源: {src_cid}  "
-                        f"類型: {src_type}  信心: {src_conf:.2f}"
-                    )
                 for cid, fsm in chimney_fsms.items():
                     if cid == src_cid and src_cid is not None:
                         fsm.update(current_time, True, src_type, src_conf)
@@ -438,8 +363,7 @@ def main():
                     fsm.update(current_time, False, None, 0.0)
 
         t_state_ms = (time.perf_counter() - t_sm_start) * 1000.0
-
-        # ── UI 繪製 ───────────────────────────────────────────────────────────
+        
         t_draw_start    = time.perf_counter()
         annotated_frame = draw_ui(annotated_frame, chimney_fsms, frame_counter, display_fps)
         t_draw_ms       = (time.perf_counter() - t_draw_start) * 1000.0
@@ -447,15 +371,32 @@ def main():
         if frame_counter % 10 == 0:
             print_timing(t_pre, t_inf, t_post, t_state_ms, t_draw_ms, display_fps)
 
-        cv2.imshow("NCKU Petrochemical Chimney — AI Safety Monitor v6.1", annotated_frame)
+        cv2.imshow("NCKU Petrochemical Chimney — AI Safety Monitor v6.2", annotated_frame)
         if cv2.waitKey(wait_ms) & 0xFF == ord('q'):
-            print(f"\n\n[{datetime.now().strftime('%H:%M:%S')}] [EXIT] 使用者手動結束。")
             break
 
     cap.release()
     cv2.destroyAllWindows()
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] [EXIT] 資源釋放完畢。\n")
+    print(f"\n[{datetime.now().strftime('%H:%M:%S')}] [EXIT] 影像播放結束，釋放視窗資源。")
 
+    # ── 💡 串接亮點：專題展現場防禦性等待 ──────────────────────────────────────
+    # 檢查 run_mcp_agent_v3 裡的消融實驗執行緒是否還在運作
+    import threading
+    active_threads = threading.enumerate()
+    mcp_thread_active = any(t.name != "MainThread" and t.is_alive() for t in active_threads)
+
+    if mcp_thread_active:
+        print("\n" + "="*70)
+        print(f" ⏳ [{datetime.now().strftime('%H:%M:%S')}] [系統提示] 本地大模型消融實驗仍在後台加速推論中...")
+        print("    系統將暫緩退出，請稍候。對比數據表與 Markdown 報告即將生成...")
+        print("="*70)
+        
+        # 循環等待，直到後台的所有守護執行緒（實驗任務）執行完畢並釋放鎖
+        while any(t.name != "MainThread" and t.is_alive() for t in active_threads):
+            time.sleep(1.0)
+            active_threads = threading.enumerate()
+
+    print(f"\n[{datetime.now().strftime('%H:%M:%S')}] 🏁 [SUCCESS] 全系統連動任務圓滿完成，安全退出。")
 
 if __name__ == "__main__":
     main()

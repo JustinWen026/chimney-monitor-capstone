@@ -1,0 +1,144 @@
+{
+  "experiment_date": "2026-06-10 03:08:58",
+  "model": "qwen2.5:7b-instruct",
+  "n_runs": 5,
+  "baseline": {
+    "ttft_mean": 2.309221696853638,
+    "ttft_std": 0.023336525861182664,
+    "total_time_mean": 9.95512671470642,
+    "total_time_std": 0.09117188816909154,
+    "tokens_mean": 474.8,
+    "tokens_std": 6.260990336999411,
+    "tps_mean": 47.692744390957245,
+    "hallucination_rate_mean": 0.05,
+    "hallucination_rate_std": 0.0,
+    "consistency_mean": 0.2,
+    "consistency_std": 0.0
+  },
+  "mcp": {
+    "ttft_mean": 2.3103054046630858,
+    "ttft_std": 0.03275945843733932,
+    "total_time_mean": 7.951439428329468,
+    "total_time_std": 0.4092708331735822,
+    "tokens_mean": 353.6,
+    "tokens_std": 25.93838853899756,
+    "tps_mean": 44.43253685187395,
+    "hallucination_rate_mean": 0.05,
+    "hallucination_rate_std": 0.0,
+    "consistency_mean": 1.0,
+    "consistency_std": 0.0
+  },
+  "hallucination_triggers_used": [
+    "溫度",
+    "temperature",
+    "風速",
+    "wind",
+    "濃度",
+    "ppm",
+    "SO2",
+    "NOx",
+    "PM2.5",
+    "壓力",
+    "pressure",
+    "CH-01",
+    "CH-02",
+    "CH-03",
+    "CH-05",
+    "13:25",
+    "13:28",
+    "13:31",
+    "CAM-A3",
+    "contrast ratio"
+  ],
+  "required_sections": [
+    "事件摘要",
+    "歸因",
+    "風險",
+    "建議",
+    "追蹤"
+  ],
+  "raw_baseline": [
+    {
+      "run": 1,
+      "hallucination_keywords": [
+        "濃度"
+      ],
+      "consistency_score": 0.2,
+      "total_time": 10.114150285720825
+    },
+    {
+      "run": 2,
+      "hallucination_keywords": [
+        "濃度"
+      ],
+      "consistency_score": 0.2,
+      "total_time": 9.882033109664917
+    },
+    {
+      "run": 3,
+      "hallucination_keywords": [
+        "濃度"
+      ],
+      "consistency_score": 0.2,
+      "total_time": 9.925851821899414
+    },
+    {
+      "run": 4,
+      "hallucination_keywords": [
+        "濃度"
+      ],
+      "consistency_score": 0.2,
+      "total_time": 9.917962789535522
+    },
+    {
+      "run": 5,
+      "hallucination_keywords": [
+        "濃度"
+      ],
+      "consistency_score": 0.2,
+      "total_time": 9.935635566711426
+    }
+  ],
+  "raw_mcp": [
+    {
+      "run": 1,
+      "hallucination_keywords": [
+        "濃度"
+      ],
+      "consistency_score": 1.0,
+      "total_time": 8.682745218276978
+    },
+    {
+      "run": 2,
+      "hallucination_keywords": [
+        "濃度"
+      ],
+      "consistency_score": 1.0,
+      "total_time": 7.743792533874512
+    },
+    {
+      "run": 3,
+      "hallucination_keywords": [
+        "濃度"
+      ],
+      "consistency_score": 1.0,
+      "total_time": 7.756186485290527
+    },
+    {
+      "run": 4,
+      "hallucination_keywords": [
+        "濃度"
+      ],
+      "consistency_score": 1.0,
+      "total_time": 7.782986640930176
+    },
+    {
+      "run": 5,
+      "hallucination_keywords": [
+        "濃度"
+      ],
+      "consistency_score": 1.0,
+      "total_time": 7.7914862632751465
+    }
+  ]
+}
