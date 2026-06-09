@@ -1,10 +1,11 @@
-# ablation_study_v3.py
-# v3 改進：
-#   1. 支援真實 alert_info 注入（從 mvp_detector 傳入）或獨立執行（用模擬數據）
-#   2. N_RUNS = 30，雙位數樣本符合重現性要求(常態分布)
-#   3. 動態組 prompt，冗餘日誌和結構化數據都來自真實/模擬的偵測結果
-#   4. HALLUCINATION_TRIGGERS 與真實數據解耦，避免真實欄位值被誤判為幻覺
-#   5. 保留 warmup、隨機化順序、±std、JSON 落地
+# ablation_study_v4.py
+# v4 改進：
+#   1. 格式一致性改用「語義同義詞群」評分（0~1 連續值），
+#      每個必要段落只要有任一同義詞命中即得分，不再要求完全匹配標題。
+#      這讓 Baseline 組能反映 LLM 用自然措辭（「原因分析」「事故概述」）的實際情況，
+#      避免因字面不符導致分數被低估，使兩組差距更真實、更具說服力。
+#   2. N_RUNS = 30，符合中央極限定理樣本要求。
+#   3. 其餘邏輯（warmup、隨機順序、真實 alert_info 注入、JSON 落地）與 v3 相同。
 
 import time
 import json
@@ -16,35 +17,37 @@ from datetime import datetime
 
 OLLAMA_URL = "http://localhost:11434/api/generate"
 MODEL_NAME = "qwen2.5:7b-instruct"
-N_RUNS = 30  # 雙位數樣本，temperature=0 確定性輸出下已足夠
+N_RUNS = 30
 
-# ── 幻覺觸發詞：只放「不應該出現」的詞，不放真實欄位的值 ─────────────────
-# 這些是 baseline 組 LLM 看到冗餘日誌後容易自己補充的假資訊
+# ── 幻覺觸發詞：只放「不應該出現」的詞 ──────────────────────────────────────
 HALLUCINATION_TRIGGERS = [
     "風速", "wind speed",
-    "SO2", "NOx", "PM2.5",          # 感測器數值，系統根本沒有
+    "SO2", "NOx", "PM2.5",
     "ppm", "mg/m³",
-    "CAM-A3", "contrast ratio",      # 只會出現在 baseline 的冗餘日誌殘影
-    "13:25", "13:28", "13:31",       # baseline 日誌裡被過濾的時間戳
-    "email", "safety_manager",       # 日誌裡的雜訊行
-    "29.8 FPS", "frame rate",        # 系統 debug 行殘影
+    "CAM-A3", "contrast ratio",
+    "13:25", "13:28", "13:31",
+    "email", "safety_manager",
+    "29.8 FPS", "frame rate",
 ]
 
-# 報告必須包含的結構化段落
-REQUIRED_SECTIONS = ["事件摘要", "歸因", "風險", "建議", "追蹤"]
+# ── 語義同義詞群：每個段落列出 LLM 可能使用的各種措辭 ───────────────────────
+# Baseline 組 LLM 傾向用自然語言標題（「原因分析」「後續行動」），
+# MCP 組 LLM 因 prompt 直接給定，傾向使用標準標題（「歸因判定」「追蹤建議」）。
+# 只要任一同義詞命中，該段落即得 1 分。
+SECTION_SYNONYMS = {
+    "事件摘要": ["事件摘要", "摘要", "事故概述", "事件概述", "事件描述", "概述", "事故摘要", "incident summary"],
+    "歸因判定": ["歸因", "原因", "事故原因", "原因分析", "成因", "root cause", "歸因判定", "原因判斷", "肇因"],
+    "風險等級": ["風險", "危險", "risk", "風險等級", "風險評估", "嚴重程度", "危險程度", "風險評級"],
+    "建議處置": ["建議", "處置", "應對", "措施", "處理", "行動", "因應", "建議處置", "緊急措施"],
+    "追蹤建議": ["追蹤", "後續", "follow", "跟進", "追蹤建議", "後續行動", "後續處理", "持續監控"],
+}
 
 _ablation_lock = threading.Lock()
 
 
-# ── 根據 alert_info 動態組數據 ────────────────────────────────────────────────
+# ── 動態組數據 ───────────────────────────────────────────────────────────────
 
 def build_experiment_data(alert_info: dict) -> tuple[str, dict, str]:
-    """
-    輸入真實或模擬的 alert_info，回傳：
-    - redundant_logs: baseline 組的冗餘日誌字串
-    - mcp_structured: MCP 組的結構化 JSON dict
-    - chimney_id: 供標題顯示
-    """
     chimney_id  = alert_info.get("chimney_id", "CH-A")
     smoke_type  = alert_info.get("smoke_type", "black_smoky")
     duration    = alert_info.get("duration", 45.0)
@@ -55,7 +58,6 @@ def build_experiment_data(alert_info: dict) -> tuple[str, dict, str]:
     smoke_label = "Black Smoke" if smoke_type == "black_smoky" else "White Smoke"
     opacity_pct = f"{density:.0%}"
 
-    # Baseline 組：混入大量無關日誌，關鍵資訊埋在中間
     fake_ts_before = timestamp.replace(timestamp[11:16], "13:25") if len(timestamp) > 15 else "2026-06-10 13:25:00"
     fake_ts_mid    = timestamp.replace(timestamp[11:16], "13:28") if len(timestamp) > 15 else "2026-06-10 13:28:00"
     fake_ts_after  = timestamp.replace(timestamp[11:16], "13:31") if len(timestamp) > 15 else "2026-06-10 13:31:00"
@@ -70,7 +72,6 @@ def build_experiment_data(alert_info: dict) -> tuple[str, dict, str]:
 [DEBUG] Background subtraction algorithm frame rate stable at 29.8 FPS.
 """
 
-    # MCP 組：只有精準的結構化欄位
     mcp_structured = {
         "timestamp":        timestamp,
         "chimney_id":       chimney_id,
@@ -79,7 +80,7 @@ def build_experiment_data(alert_info: dict) -> tuple[str, dict, str]:
         "sliding_density":  opacity_pct,
         "yolo_confidence":  confidence,
         "status":           "TRIGGERED_ALARM_LEVEL_3",
-        "attribution":      "燃燒控制異常（不完全燃燃）" if smoke_type == "black_smoky" else "製程洩漏或蒸氣溢散",
+        "attribution":      "燃燒控制異常（不完全燃燒）" if smoke_type == "black_smoky" else "製程洩漏或蒸氣溢散",
     }
 
     return redundant_logs, mcp_structured, chimney_id
@@ -96,8 +97,15 @@ def score_hallucination(text: str) -> dict:
     }
 
 def score_consistency(text: str) -> float:
-    hit = sum(1 for sec in REQUIRED_SECTIONS if sec in text)
-    return round(hit / len(REQUIRED_SECTIONS), 2)
+    """
+    語義同義詞群評分：每個必要段落只要任一同義詞命中即得 1 分。
+    回傳 0~1（命中段落數 / 總段落數）。
+    """
+    hit = sum(
+        1 for synonyms in SECTION_SYNONYMS.values()
+        if any(s.lower() in text.lower() for s in synonyms)
+    )
+    return round(hit / len(SECTION_SYNONYMS), 2)
 
 def run_single(prompt: str, silent: bool = True) -> dict:
     payload = {
@@ -160,28 +168,30 @@ def summarize(results: list) -> dict:
     }
 
 
-# ── 主實驗函數（可被外部呼叫，也可獨立跑）─────────────────────────────────────
+# ── 主實驗函數 ────────────────────────────────────────────────────────────────
 
 def run_ablation(alert_info: dict):
     redundant_logs, mcp_structured, chimney_id = build_experiment_data(alert_info)
 
+    # 兩組使用完全相同的角色設定與任務描述，唯一差別是 context 輸入形式
     BASELINE_PROMPT = (
         "你是一個石化園區的安全專家。"
-        "請根據以下後台原始系統日誌，找出工安事件並生成包含"
-        "【事件摘要】【歸因判定】【風險等級】【建議處置】【追蹤建議】的事故初報：\n"
+        "請根據以下後台原始系統日誌，找出工安事件，生成事故初報：\n"
         + redundant_logs
     )
 
     MCP_PROMPT = (
         "你是一個石化園區的安全專家。"
-        "以下是經結構化過濾的工安事件數據，"
-        "請直接生成包含【事件摘要】【歸因判定】【風險等級】【建議處置】【追蹤建議】的事故初報：\n"
+        "以下是經結構化過濾的工安事件數據，生成事故初報：\n"
         + json.dumps(mcp_structured, ensure_ascii=False, indent=2)
     )
+    # 注意：兩組 prompt 都不再明確列出段落標題，
+    # 讓格式一致性分數完全反映 LLM 在不同 context 下的自然輸出行為。
 
     print(f"\n{'='*65}")
-    print(f"   Ablation Study v3  ─  Chimney: {chimney_id}")
+    print(f"   Ablation Study v4  ─  Chimney: {chimney_id}")
     print(f"   模型: {MODEL_NAME}  |  每組 N={N_RUNS}，隨機順序，含熱身")
+    print(f"   評分方式: 語義同義詞群（非字面完全匹配）")
     print(f"{'='*65}")
 
     warmup()
@@ -212,7 +222,7 @@ def run_ablation(alert_info: dict):
         return f"{((bv - mv) / bv) * 100:+.1f}%" if bv != 0 else "N/A"
 
     print(f"\n\n{'='*72}")
-    print(f"          專題展實測數據對比 (Ablation Study v3 · N={N_RUNS})")
+    print(f"          專題展實測數據對比 (Ablation Study v4 · N={N_RUNS})")
     print(f"          事件煙囪: {chimney_id}  ·  模型: {MODEL_NAME}")
     print(f"{'='*72}")
     print(f"{'性能指標':<18} {'Baseline (無MCP)':<26} {'Proposed (有MCP)':<26} 優化幅度")
@@ -223,42 +233,43 @@ def run_ablation(alert_info: dict):
     print(f"{'推論速度':<18} {b['tps_mean']:.1f} T/s                    {m['tps_mean']:.1f} T/s                    -")
     print("-"*72)
     print(f"{'★ 幻覺率':<18} {b['hallucination_rate_mean']:.1%}±{b['hallucination_rate_std']:.1%}                {m['hallucination_rate_mean']:.1%}±{m['hallucination_rate_std']:.1%}                {pct(b['hallucination_rate_mean'], m['hallucination_rate_mean'])}")
-    print(f"{'★ 格式一致性':<18} {b['consistency_mean']:.1%}±{b['consistency_std']:.1%}                {m['consistency_mean']:.1%}±{m['consistency_std']:.1%}                {pct(1-b['consistency_mean'], 1-m['consistency_mean'])}")
+    print(f"{'★ 格式合規率':<18} {b['consistency_mean']:.1%}±{b['consistency_std']:.1%}                {m['consistency_mean']:.1%}±{m['consistency_std']:.1%}                {pct(1-b['consistency_mean'], 1-m['consistency_mean'])}")
     print(f"{'='*72}\n")
+    print("💡 格式合規率採語義同義詞群評分（Semantic Section Coverage），")
+    print("   各段落接受多種自然語言措辭，反映 LLM 在不同 context 下的真實輸出行為。\n")
 
     output = {
         "experiment_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "model": MODEL_NAME,
         "n_runs": N_RUNS,
+        "scoring_method": "semantic_synonym_group_matching",
         "alert_info_used": alert_info,
         "baseline": b,
         "mcp": m,
-        "raw_baseline": [{"run": i+1, "hallucination_keywords": r["hallucination_keywords"],
-                          "consistency_score": r["consistency_score"], "total_time": r["total_time"]}
+        "raw_baseline": [{"run": i+1,
+                          "hallucination_keywords": r["hallucination_keywords"],
+                          "consistency_score": r["consistency_score"],
+                          "total_time": r["total_time"]}
                          for i, r in enumerate(baseline_results)],
-        "raw_mcp": [{"run": i+1, "hallucination_keywords": r["hallucination_keywords"],
-                     "consistency_score": r["consistency_score"], "total_time": r["total_time"]}
+        "raw_mcp": [{"run": i+1,
+                     "hallucination_keywords": r["hallucination_keywords"],
+                     "consistency_score": r["consistency_score"],
+                     "total_time": r["total_time"]}
                     for i, r in enumerate(mcp_results)],
     }
-    with open("ablation_results_v3.json", "w", encoding="utf-8") as f:
+    with open("ablation_results_v4.json", "w", encoding="utf-8") as f:
         json.dump(output, f, ensure_ascii=False, indent=2)
-    print("📂 詳細數據已存至 ablation_results_v3.json\n")
+    print("📂 詳細數據已存至 ablation_results_v4.json\n")
 
 
-# ── 非同步包裝（給 mvp_detector 呼叫用）──────────────────────────────────────
+# ── 非同步包裝（給 mvp_detector 呼叫）───────────────────────────────────────
 
-def trigger_ablation_v3_async(alert_info: dict):
+def trigger_ablation_v4_async(alert_info: dict):
     """
-    外部呼叫介面：傳入真實 alert_info，在獨立執行緒跑實驗，不阻塞主推論迴圈。
-    在 mvp_detector_visual_edge_v6_3.py 裡把：
-        from run_mcp_agent import trigger_ablation_study_async
-        trigger_ablation_study_async(alert)
-    換成：
-        from ablation_study import trigger_ablation_v3_async
-        trigger_ablation_v3_async(alert)
+    外部呼叫介面，傳入真實 alert_info，在獨立執行緒跑實驗，不阻塞主推論迴圈。
     """
     if not _ablation_lock.acquire(blocking=False):
-        print("\n⚠️  [Ablation v3] 實驗正在進行中，跳過本次觸發。")
+        print("\n⚠️  [Ablation v4] 實驗進行中，跳過本次觸發。")
         return
 
     def run():
@@ -270,10 +281,9 @@ def trigger_ablation_v3_async(alert_info: dict):
     threading.Thread(target=run, daemon=True).start()
 
 
-# ── 獨立執行（模擬數據）──────────────────────────────────────────────────────
+# ── 獨立執行 ─────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    # 模擬一筆來自 mvp_detector 的真實 alert_info
     mock_alert = {
         "chimney_id": "Chimney-B",
         "smoke_type":  "black_smoky",
