@@ -1,11 +1,10 @@
-# ablation_study_v4.py
-# v4 改進：
-#   1. 格式一致性改用「語義同義詞群」評分（0~1 連續值），
-#      每個必要段落只要有任一同義詞命中即得分，不再要求完全匹配標題。
-#      這讓 Baseline 組能反映 LLM 用自然措辭（「原因分析」「事故概述」）的實際情況，
-#      避免因字面不符導致分數被低估，使兩組差距更真實、更具說服力。
-#   2. N_RUNS = 30，符合中央極限定理樣本要求。
-#   3. 其餘邏輯（warmup、隨機順序、真實 alert_info 注入、JSON 落地）與 v3 相同。
+# ablation_study_v5.py
+# v5 改進：
+#   1. 格式合規率改用「加權深度評分」（Weighted Depth Scoring）：
+#      段落命中後再依該段落文字長度給予 0.5（淺層）或 1.0（深層）分，
+#      避免 LLM 只寫標題不寫內容就拿滿分。對應 ROUGE precision 概念（Lin, 2004）。
+#   2. 幻覺率優化幅度改用絕對差值（Δ），避免分母為 0 導致 ±100% 的誤導性顯示。
+#   3. temperature 維持 0.0（確定性推論），N=30。
 
 import time
 import json
@@ -30,10 +29,10 @@ HALLUCINATION_TRIGGERS = [
     "29.8 FPS", "frame rate",
 ]
 
-# ── 語義同義詞群：每個段落列出 LLM 可能使用的各種措辭 ───────────────────────
-# Baseline 組 LLM 傾向用自然語言標題（「原因分析」「後續行動」），
-# MCP 組 LLM 因 prompt 直接給定，傾向使用標準標題（「歸因判定」「追蹤建議」）。
-# 只要任一同義詞命中，該段落即得 1 分。
+# ── 語義同義詞群 + 最低內容長度門檻 ─────────────────────────────────────────
+# 每個段落命中後，還要確認該段落後續有足夠的實質內容（MIN_SECTION_CHARS 字元），
+# 內容不足只給 0.5 分（淺層命中），足夠才給 1.0 分（深層命中）。
+# 依據：ROUGE precision 的精準率概念——命中不代表有意義的內容（Lin, 2004, ACL）。
 SECTION_SYNONYMS = {
     "事件摘要": ["事件摘要", "摘要", "事故概述", "事件概述", "事件描述", "概述", "事故摘要", "incident summary"],
     "歸因判定": ["歸因", "原因", "事故原因", "原因分析", "成因", "root cause", "歸因判定", "原因判斷", "肇因"],
@@ -41,6 +40,9 @@ SECTION_SYNONYMS = {
     "建議處置": ["建議", "處置", "應對", "措施", "處理", "行動", "因應", "建議處置", "緊急措施"],
     "追蹤建議": ["追蹤", "後續", "follow", "跟進", "追蹤建議", "後續行動", "後續處理", "持續監控"],
 }
+
+# 段落後續至少需要這麼多字元才算「深層命中」（給 1.0 分）；不足給 0.5 分
+MIN_SECTION_CHARS = 30
 
 _ablation_lock = threading.Lock()
 
@@ -98,14 +100,28 @@ def score_hallucination(text: str) -> dict:
 
 def score_consistency(text: str) -> float:
     """
-    語義同義詞群評分：每個必要段落只要任一同義詞命中即得 1 分。
-    回傳 0~1（命中段落數 / 總段落數）。
+    加權深度評分（Weighted Depth Scoring）：
+    - 段落關鍵詞命中 + 後續內容 >= MIN_SECTION_CHARS 字元 → 1.0 分（深層）
+    - 段落關鍵詞命中 + 後續內容 <  MIN_SECTION_CHARS 字元 → 0.5 分（淺層）
+    - 未命中 → 0 分
+    對應 ROUGE precision 概念，命中品質比命中數量更重要（Lin, 2004）。
     """
-    hit = sum(
-        1 for synonyms in SECTION_SYNONYMS.values()
-        if any(s.lower() in text.lower() for s in synonyms)
-    )
-    return round(hit / len(SECTION_SYNONYMS), 2)
+    text_lower = text.lower()
+    total_score = 0.0
+    for synonyms in SECTION_SYNONYMS.values():
+        for kw in synonyms:
+            idx = text_lower.find(kw.lower())
+            if idx != -1:
+                # 找到關鍵詞後，取其後 MIN_SECTION_CHARS*3 字元來判斷內容深度
+                following = text[idx + len(kw): idx + len(kw) + MIN_SECTION_CHARS * 3].strip()
+                # 移除標點和空白再計長度
+                content_len = len(following.replace("\n", "").replace(" ", "").replace("：", "").replace(":", ""))
+                if content_len >= MIN_SECTION_CHARS:
+                    total_score += 1.0   # 深層命中
+                else:
+                    total_score += 0.5   # 淺層命中（有標題但內容不足）
+                break  # 該段落已命中，不重複計分
+    return round(total_score / len(SECTION_SYNONYMS), 2)
 
 def run_single(prompt: str, silent: bool = True) -> dict:
     payload = {
@@ -189,7 +205,7 @@ def run_ablation(alert_info: dict):
     # 讓格式一致性分數完全反映 LLM 在不同 context 下的自然輸出行為。
 
     print(f"\n{'='*65}")
-    print(f"   Ablation Study v4  ─  Chimney: {chimney_id}")
+    print(f"   Ablation Study v5  ─  Chimney: {chimney_id}")
     print(f"   模型: {MODEL_NAME}  |  每組 N={N_RUNS}，隨機順序，含熱身")
     print(f"   評分方式: 語義同義詞群（非字面完全匹配）")
     print(f"{'='*65}")
@@ -222,7 +238,7 @@ def run_ablation(alert_info: dict):
         return f"{((bv - mv) / bv) * 100:+.1f}%" if bv != 0 else "N/A"
 
     print(f"\n\n{'='*72}")
-    print(f"          專題展實測數據對比 (Ablation Study v4 · N={N_RUNS})")
+    print(f"          專題展實測數據對比 (Ablation Study v5 · N={N_RUNS})")
     print(f"          事件煙囪: {chimney_id}  ·  模型: {MODEL_NAME}")
     print(f"{'='*72}")
     print(f"{'性能指標':<18} {'Baseline (無MCP)':<26} {'Proposed (有MCP)':<26} 優化幅度")
@@ -232,17 +248,21 @@ def run_ablation(alert_info: dict):
     print(f"{'Token 消耗量':<18} {b['tokens_mean']:.0f}±{b['tokens_std']:.0f} tokens         {m['tokens_mean']:.0f}±{m['tokens_std']:.0f} tokens         {pct(b['tokens_mean'], m['tokens_mean'])}")
     print(f"{'推論速度':<18} {b['tps_mean']:.1f} T/s                    {m['tps_mean']:.1f} T/s                    -")
     print("-"*72)
-    print(f"{'★ 幻覺率':<18} {b['hallucination_rate_mean']:.1%}±{b['hallucination_rate_std']:.1%}                {m['hallucination_rate_mean']:.1%}±{m['hallucination_rate_std']:.1%}                {pct(b['hallucination_rate_mean'], m['hallucination_rate_mean'])}")
-    print(f"{'★ 格式合規率':<18} {b['consistency_mean']:.1%}±{b['consistency_std']:.1%}                {m['consistency_mean']:.1%}±{m['consistency_std']:.1%}                {pct(1-b['consistency_mean'], 1-m['consistency_mean'])}")
+    # 幻覺率用絕對差值 Δ，避免分母為 0 產生 ±100% 的誤導性顯示
+    halluc_delta = m['hallucination_rate_mean'] - b['hallucination_rate_mean']
+    consist_gain = pct(1 - b['consistency_mean'], 1 - m['consistency_mean'])
+    print(f"{'★ 幻覺率':<18} {b['hallucination_rate_mean']:.1%}±{b['hallucination_rate_std']:.1%}                {m['hallucination_rate_mean']:.1%}±{m['hallucination_rate_std']:.1%}                Δ={halluc_delta:+.1%}")
+    print(f"{'★ 格式合規率':<18} {b['consistency_mean']:.1%}±{b['consistency_std']:.1%}                {m['consistency_mean']:.1%}±{m['consistency_std']:.1%}                {consist_gain}")
     print(f"{'='*72}\n")
-    print("💡 格式合規率採語義同義詞群評分（Semantic Section Coverage），")
-    print("   各段落接受多種自然語言措辭，反映 LLM 在不同 context 下的真實輸出行為。\n")
+    print("💡 格式合規率採加權深度評分（Weighted Depth Scoring）：")
+    print("   段落命中且後續內容充足得 1.0 分，僅有標題無實質內容得 0.5 分。")
+    print("   幻覺率以絕對差值（Δ）呈現，避免分母趨近零時的百分比失真。\n")
 
     output = {
         "experiment_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "model": MODEL_NAME,
         "n_runs": N_RUNS,
-        "scoring_method": "semantic_synonym_group_matching",
+        "scoring_method": "weighted_depth_scoring_with_synonym_groups",
         "alert_info_used": alert_info,
         "baseline": b,
         "mcp": m,
@@ -257,19 +277,19 @@ def run_ablation(alert_info: dict):
                      "total_time": r["total_time"]}
                     for i, r in enumerate(mcp_results)],
     }
-    with open("ablation_results_v4.json", "w", encoding="utf-8") as f:
+    with open("ablation_results_v5.json", "w", encoding="utf-8") as f:
         json.dump(output, f, ensure_ascii=False, indent=2)
-    print("📂 詳細數據已存至 ablation_results_v4.json\n")
+    print("📂 詳細數據已存至 ablation_results_v5.json\n")
 
 
 # ── 非同步包裝（給 mvp_detector 呼叫）───────────────────────────────────────
 
-def trigger_ablation_v4_async(alert_info: dict):
+def trigger_ablation_v5_async(alert_info: dict):
     """
     外部呼叫介面，傳入真實 alert_info，在獨立執行緒跑實驗，不阻塞主推論迴圈。
     """
     if not _ablation_lock.acquire(blocking=False):
-        print("\n⚠️  [Ablation v4] 實驗進行中，跳過本次觸發。")
+        print("\n⚠️  [Ablation v5] 實驗進行中，跳過本次觸發。")
         return
 
     def run():
