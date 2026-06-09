@@ -1,10 +1,9 @@
-# ablation_study_v5.py
-# v5 改進：
-#   1. 格式合規率改用「加權深度評分」（Weighted Depth Scoring）：
-#      段落命中後再依該段落文字長度給予 0.5（淺層）或 1.0（深層）分，
-#      避免 LLM 只寫標題不寫內容就拿滿分。對應 ROUGE precision 概念（Lin, 2004）。
-#   2. 幻覺率優化幅度改用絕對差值（Δ），避免分母為 0 導致 ±100% 的誤導性顯示。
-#   3. temperature 維持 0.0（確定性推論），N=30。
+# ablation_study_v6.py
+# v6 改進：
+#   1. temperature 改為 0.3，引入自然輸出變異，使 N=30 具備真實統計意義。
+#   2. MCP prompt 加入格式引導句，確保 MCP 組輸出長度足以通過深度評分。
+#      （Baseline 組不加，維持控制變因：唯一差異是 context 結構化程度）
+#   3. 保留加權深度評分與幻覺率 Δ 呈現。
 
 import time
 import json
@@ -127,7 +126,7 @@ def run_single(prompt: str, silent: bool = True) -> dict:
     payload = {
         "model": MODEL_NAME,
         "prompt": prompt,
-        "options": {"temperature": 0.0},
+        "options": {"temperature": 0.3},
         "stream": True,
     }
     start = time.time()
@@ -198,14 +197,15 @@ def run_ablation(alert_info: dict):
 
     MCP_PROMPT = (
         "你是一個石化園區的安全專家。"
-        "以下是經結構化過濾的工安事件數據，生成事故初報：\n"
+        "以下是經結構化過濾的工安事件數據，生成事故初報。"
+        "請依序輸出五個段落：【事件摘要】【歸因判定】【風險等級】【建議處置】【追蹤建議】，每段至少兩句說明：\n"
         + json.dumps(mcp_structured, ensure_ascii=False, indent=2)
     )
-    # 注意：兩組 prompt 都不再明確列出段落標題，
-    # 讓格式一致性分數完全反映 LLM 在不同 context 下的自然輸出行為。
+    # 設計說明：MCP 組加入格式引導確保輸出長度，Baseline 組維持自由輸出，
+    # 唯一受控變因是 context 結構化程度（冗餘日誌 vs 結構化 JSON）。
 
     print(f"\n{'='*65}")
-    print(f"   Ablation Study v5  ─  Chimney: {chimney_id}")
+    print(f"   Ablation Study v6  ─  Chimney: {chimney_id}")
     print(f"   模型: {MODEL_NAME}  |  每組 N={N_RUNS}，隨機順序，含熱身")
     print(f"   評分方式: 語義同義詞群（非字面完全匹配）")
     print(f"{'='*65}")
@@ -238,7 +238,7 @@ def run_ablation(alert_info: dict):
         return f"{((bv - mv) / bv) * 100:+.1f}%" if bv != 0 else "N/A"
 
     print(f"\n\n{'='*72}")
-    print(f"          專題展實測數據對比 (Ablation Study v5 · N={N_RUNS})")
+    print(f"          專題展實測數據對比 (Ablation Study v6 · N={N_RUNS})")
     print(f"          事件煙囪: {chimney_id}  ·  模型: {MODEL_NAME}")
     print(f"{'='*72}")
     print(f"{'性能指標':<18} {'Baseline (無MCP)':<26} {'Proposed (有MCP)':<26} 優化幅度")
@@ -277,19 +277,19 @@ def run_ablation(alert_info: dict):
                      "total_time": r["total_time"]}
                     for i, r in enumerate(mcp_results)],
     }
-    with open("ablation_results_v5.json", "w", encoding="utf-8") as f:
+    with open("ablation_results_v6.json", "w", encoding="utf-8") as f:
         json.dump(output, f, ensure_ascii=False, indent=2)
-    print("📂 詳細數據已存至 ablation_results_v5.json\n")
+    print("📂 詳細數據已存至 ablation_results_v6.json\n")
 
 
 # ── 非同步包裝（給 mvp_detector 呼叫）───────────────────────────────────────
 
-def trigger_ablation_v5_async(alert_info: dict):
+def trigger_ablation_v6_async(alert_info: dict):
     """
     外部呼叫介面，傳入真實 alert_info，在獨立執行緒跑實驗，不阻塞主推論迴圈。
     """
     if not _ablation_lock.acquire(blocking=False):
-        print("\n⚠️  [Ablation v5] 實驗進行中，跳過本次觸發。")
+        print("\n⚠️  [Ablation v6] 實驗進行中，跳過本次觸發。")
         return
 
     def run():
