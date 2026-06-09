@@ -1,0 +1,405 @@
+{
+  "experiment_date": "2026-06-10 03:52:26",
+  "model": "qwen2.5:7b-instruct",
+  "n_runs": 30,
+  "alert_info_used": {
+    "timestamp": "2026-06-10 03:43:48",
+    "duration": 3.0,
+    "smoke_type": "white_smoky",
+    "chimney_id": "Chimney-B",
+    "density": 0.6075949367088608,
+    "confidence": 0.69
+  },
+  "baseline": {
+    "ttft_mean": 2.269274187088013,
+    "ttft_std": 0.031578617956308806,
+    "total_time_mean": 8.848013003667196,
+    "total_time_std": 0.2070370543122252,
+    "tokens_mean": 412.1333333333333,
+    "tokens_std": 11.684747893443543,
+    "tps_mean": 46.575135305899025,
+    "hallucination_rate_mean": 0.0020833333333333333,
+    "hallucination_rate_std": 0.01141088661469096,
+    "consistency_mean": 0.22,
+    "consistency_std": 0.10954451150103323
+  },
+  "mcp": {
+    "ttft_mean": 2.2672792355219524,
+    "ttft_std": 0.024960104301105342,
+    "total_time_mean": 8.232940514882406,
+    "total_time_std": 0.05068093463002842,
+    "tokens_mean": 377.73333333333335,
+    "tokens_std": 6.937819061732104,
+    "tps_mean": 45.88260518964844,
+    "hallucination_rate_mean": 0.0,
+    "hallucination_rate_std": 0.0,
+    "consistency_mean": 1.0,
+    "consistency_std": 0.0
+  },
+  "raw_baseline": [
+    {
+      "run": 1,
+      "hallucination_keywords": [
+        "風速"
+      ],
+      "consistency_score": 0.8,
+      "total_time": 9.923115253448486
+    },
+    {
+      "run": 2,
+      "hallucination_keywords": [],
+      "consistency_score": 0.2,
+      "total_time": 8.841052055358887
+    },
+    {
+      "run": 3,
+      "hallucination_keywords": [],
+      "consistency_score": 0.2,
+      "total_time": 8.803242683410645
+    },
+    {
+      "run": 4,
+      "hallucination_keywords": [],
+      "consistency_score": 0.2,
+      "total_time": 8.762665510177612
+    },
+    {
+      "run": 5,
+      "hallucination_keywords": [],
+      "consistency_score": 0.2,
+      "total_time": 8.83601689338684
+    },
+    {
+      "run": 6,
+      "hallucination_keywords": [],
+      "consistency_score": 0.2,
+      "total_time": 8.799583673477173
+    },
+    {
+      "run": 7,
+      "hallucination_keywords": [],
+      "consistency_score": 0.2,
+      "total_time": 8.829603672027588
+    },
+    {
+      "run": 8,
+      "hallucination_keywords": [],
+      "consistency_score": 0.2,
+      "total_time": 8.83234977722168
+    },
+    {
+      "run": 9,
+      "hallucination_keywords": [],
+      "consistency_score": 0.2,
+      "total_time": 8.778545379638672
+    },
+    {
+      "run": 10,
+      "hallucination_keywords": [],
+      "consistency_score": 0.2,
+      "total_time": 8.839024543762207
+    },
+    {
+      "run": 11,
+      "hallucination_keywords": [],
+      "consistency_score": 0.2,
+      "total_time": 8.82778024673462
+    },
+    {
+      "run": 12,
+      "hallucination_keywords": [],
+      "consistency_score": 0.2,
+      "total_time": 8.746785640716553
+    },
+    {
+      "run": 13,
+      "hallucination_keywords": [],
+      "consistency_score": 0.2,
+      "total_time": 8.780301094055176
+    },
+    {
+      "run": 14,
+      "hallucination_keywords": [],
+      "consistency_score": 0.2,
+      "total_time": 8.777857065200806
+    },
+    {
+      "run": 15,
+      "hallucination_keywords": [],
+      "consistency_score": 0.2,
+      "total_time": 8.80766224861145
+    },
+    {
+      "run": 16,
+      "hallucination_keywords": [],
+      "consistency_score": 0.2,
+      "total_time": 8.787359714508057
+    },
+    {
+      "run": 17,
+      "hallucination_keywords": [],
+      "consistency_score": 0.2,
+      "total_time": 8.815434455871582
+    },
+    {
+      "run": 18,
+      "hallucination_keywords": [],
+      "consistency_score": 0.2,
+      "total_time": 8.816105842590332
+    },
+    {
+      "run": 19,
+      "hallucination_keywords": [],
+      "consistency_score": 0.2,
+      "total_time": 8.80235767364502
+    },
+    {
+      "run": 20,
+      "hallucination_keywords": [],
+      "consistency_score": 0.2,
+      "total_time": 8.846158742904663
+    },
+    {
+      "run": 21,
+      "hallucination_keywords": [],
+      "consistency_score": 0.2,
+      "total_time": 8.793823480606079
+    },
+    {
+      "run": 22,
+      "hallucination_keywords": [],
+      "consistency_score": 0.2,
+      "total_time": 8.822806596755981
+    },
+    {
+      "run": 23,
+      "hallucination_keywords": [],
+      "consistency_score": 0.2,
+      "total_time": 8.780067682266235
+    },
+    {
+      "run": 24,
+      "hallucination_keywords": [],
+      "consistency_score": 0.2,
+      "total_time": 8.825038433074951
+    },
+    {
+      "run": 25,
+      "hallucination_keywords": [],
+      "consistency_score": 0.2,
+      "total_time": 8.777127504348755
+    },
+    {
+      "run": 26,
+      "hallucination_keywords": [],
+      "consistency_score": 0.2,
+      "total_time": 8.763934135437012
+    },
+    {
+      "run": 27,
+      "hallucination_keywords": [],
+      "consistency_score": 0.2,
+      "total_time": 8.841209650039673
+    },
+    {
+      "run": 28,
+      "hallucination_keywords": [],
+      "consistency_score": 0.2,
+      "total_time": 8.80124568939209
+    },
+    {
+      "run": 29,
+      "hallucination_keywords": [],
+      "consistency_score": 0.2,
+      "total_time": 8.80886197090149
+    },
+    {
+      "run": 30,
+      "hallucination_keywords": [],
+      "consistency_score": 0.2,
+      "total_time": 8.973272800445557
+    }
+  ],
+  "raw_mcp": [
+    {
+      "run": 1,
+      "hallucination_keywords": [],
+      "consistency_score": 1.0,
+      "total_time": 8.244630336761475
+    },
+    {
+      "run": 2,
+      "hallucination_keywords": [],
+      "consistency_score": 1.0,
+      "total_time": 8.276407957077026
+    },
+    {
+      "run": 3,
+      "hallucination_keywords": [],
+      "consistency_score": 1.0,
+      "total_time": 8.207465648651123
+    },
+    {
+      "run": 4,
+      "hallucination_keywords": [],
+      "consistency_score": 1.0,
+      "total_time": 8.22415542602539
+    },
+    {
+      "run": 5,
+      "hallucination_keywords": [],
+      "consistency_score": 1.0,
+      "total_time": 8.181265592575073
+    },
+    {
+      "run": 6,
+      "hallucination_keywords": [],
+      "consistency_score": 1.0,
+      "total_time": 8.240211725234985
+    },
+    {
+      "run": 7,
+      "hallucination_keywords": [],
+      "consistency_score": 1.0,
+      "total_time": 8.209786653518677
+    },
+    {
+      "run": 8,
+      "hallucination_keywords": [],
+      "consistency_score": 1.0,
+      "total_time": 8.175951957702637
+    },
+    {
+      "run": 9,
+      "hallucination_keywords": [],
+      "consistency_score": 1.0,
+      "total_time": 8.195555925369263
+    },
+    {
+      "run": 10,
+      "hallucination_keywords": [],
+      "consistency_score": 1.0,
+      "total_time": 8.215964555740356
+    },
+    {
+      "run": 11,
+      "hallucination_keywords": [],
+      "consistency_score": 1.0,
+      "total_time": 8.257346630096436
+    },
+    {
+      "run": 12,
+      "hallucination_keywords": [],
+      "consistency_score": 1.0,
+      "total_time": 8.219250202178955
+    },
+    {
+      "run": 13,
+      "hallucination_keywords": [],
+      "consistency_score": 1.0,
+      "total_time": 8.213783740997314
+    },
+    {
+      "run": 14,
+      "hallucination_keywords": [],
+      "consistency_score": 1.0,
+      "total_time": 8.219809293746948
+    },
+    {
+      "run": 15,
+      "hallucination_keywords": [],
+      "consistency_score": 1.0,
+      "total_time": 8.21858286857605
+    },
+    {
+      "run": 16,
+      "hallucination_keywords": [],
+      "consistency_score": 1.0,
+      "total_time": 8.21824860572815
+    },
+    {
+      "run": 17,
+      "hallucination_keywords": [],
+      "consistency_score": 1.0,
+      "total_time": 8.201022863388062
+    },
+    {
+      "run": 18,
+      "hallucination_keywords": [],
+      "consistency_score": 1.0,
+      "total_time": 8.213969945907593
+    },
+    {
+      "run": 19,
+      "hallucination_keywords": [],
+      "consistency_score": 1.0,
+      "total_time": 8.203753471374512
+    },
+    {
+      "run": 20,
+      "hallucination_keywords": [],
+      "consistency_score": 1.0,
+      "total_time": 8.195820093154907
+    },
+    {
+      "run": 21,
+      "hallucination_keywords": [],
+      "consistency_score": 1.0,
+      "total_time": 8.219635248184204
+    },
+    {
+      "run": 22,
+      "hallucination_keywords": [],
+      "consistency_score": 1.0,
+      "total_time": 8.250479698181152
+    },
+    {
+      "run": 23,
+      "hallucination_keywords": [],
+      "consistency_score": 1.0,
+      "total_time": 8.197601795196533
+    },
+    {
+      "run": 24,
+      "hallucination_keywords": [],
+      "consistency_score": 1.0,
+      "total_time": 8.247113943099976
+    },
+    {
+      "run": 25,
+      "hallucination_keywords": [],
+      "consistency_score": 1.0,
+      "total_time": 8.249821186065674
+    },
+    {
+      "run": 26,
+      "hallucination_keywords": [],
+      "consistency_score": 1.0,
+      "total_time": 8.22642731666565
+    },
+    {
+      "run": 27,
+      "hallucination_keywords": [],
+      "consistency_score": 1.0,
+      "total_time": 8.267028093338013
+    },
+    {
+      "run": 28,
+      "hallucination_keywords": [],
+      "consistency_score": 1.0,
+      "total_time": 8.28149962425232
+    },
+    {
+      "run": 29,
+      "hallucination_keywords": [],
+      "consistency_score": 1.0,
+      "total_time": 8.254801511764526
+    },
+    {
+      "run": 30,
+      "hallucination_keywords": [],
+      "consistency_score": 1.0,
+      "total_time": 8.46082353591919
+    }
+  ]
+}
