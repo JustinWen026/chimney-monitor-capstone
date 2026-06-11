@@ -1,10 +1,10 @@
 """
-mvp_detector_visual_edge_v6_3.py
+mvp_detector_visual_edge_v6_2.py
 NCKU CSIE — AI Petrochemical Chimney Safety Monitor
 
-v6.3 升級說明（截圖格式修正 + DC 上傳對齊）：
-  - 截圖格式從 .jpg 改為 .png，與 discord_notifier_v7 的 multipart 上傳格式一致。
-  - 觸發告警時截圖會直接附圖上傳至 Discord 頻道，不再只傳路徑文字。
+v6.4 升級說明：
+  - 截圖格式從 .jpg 改為 .png，與 discord_notifier_v7 multipart 上傳對齊。
+  - 消融實驗引擎換成 ablation_study_v4，真實 alert_info 動態注入實驗。
 """
 
 import os
@@ -14,9 +14,8 @@ import collections
 from datetime import datetime
 from ultralytics import YOLO
 
-from discord_notifier import send_discord_alert_async  # v7: 支援截圖直接上傳 DC
-# 💡 串接亮點：引入全新的消融實驗引擎
-from run_mcp_agent import trigger_ablation_study_async
+from discord_notifier import send_discord_alert_async
+from ablation_study import trigger_ablation_v4_async  # v6.4: 真實數據注入消融實驗
 
 # ==============================================================================
 # 1. 系統參數配置
@@ -98,9 +97,9 @@ DIVIDER = "=" * 110
 def print_banner():
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print(DIVIDER)
-    print(f"  NCKU CSIE — AI Petrochemical Chimney Safety Monitor v6.3 |  啟動: {now}")
+    print(f"  NCKU CSIE — AI Petrochemical Chimney Safety Monitor v6.4 |  啟動: {now}")
     print(f"  模型   : {MODEL_PATH}")
-    print(f"  [v6.3] 截圖 PNG 格式修正，Discord 截圖直接附圖上傳")
+    print(f"  [v6.4] 真實偵測數據動態注入消融實驗 + 截圖 PNG 格式修正")
     print(DIVIDER + "\n")
 
 
@@ -125,7 +124,7 @@ def find_smoke_source(smoke_boxes, anchor_mgr) -> tuple[str | None, str | None, 
 def save_screenshot(frame, chimney_id: str, smoke_type: str) -> str:
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     safe_id = chimney_id.replace(" ", "_").replace("/", "-")
-    filename = f"alert_{safe_id}_{smoke_type}_{ts}.png"   # v6.3: 改為 PNG，與 discord_notifier_v7 的上傳格式一致
+    filename = f"alert_{safe_id}_{smoke_type}_{ts}.png"  # v6.4: PNG 對齊 discord_notifier_v7
     path = os.path.join(SCREENSHOT_DIR, filename)
     cv2.imwrite(path, frame)
     return path
@@ -347,7 +346,8 @@ def main():
                     send_discord_alert_async(alert["timestamp"], alert["duration"], alert["smoke_type"], alert["chimney_id"], alert["density"], alert["confidence"], shot)
                     
                     # 💡 串接優化：異步連動全新的 A/B 測試引擎
-                    trigger_ablation_study_async(alert)
+                    # 
+                    # trigger_ablation_v4_async(alert)  # v6.4: 真實 alert_info 注入
                     
         else:
             if has_any_smoke:
@@ -370,7 +370,7 @@ def main():
         if frame_counter % 10 == 0:
             print_timing(t_pre, t_inf, t_post, t_state_ms, t_draw_ms, display_fps)
 
-        cv2.imshow("NCKU Petrochemical Chimney — AI Safety Monitor v6.3", annotated_frame)
+        cv2.imshow("NCKU Petrochemical Chimney — AI Safety Monitor v6.4", annotated_frame)
         if cv2.waitKey(wait_ms) & 0xFF == ord('q'):
             break
 
@@ -379,7 +379,7 @@ def main():
     print(f"\n[{datetime.now().strftime('%H:%M:%S')}] [EXIT] 影像播放結束，釋放視窗資源。")
 
     # ── 💡 串接亮點：專題展現場防禦性等待 ──────────────────────────────────────
-    # 檢查 run_mcp_agent_v3 裡的消融實驗執行緒是否還在運作
+    # 檢查 ablation_study_v4 消融實驗執行緒是否還在運作
     import threading
     active_threads = threading.enumerate()
     mcp_thread_active = any(t.name != "MainThread" and t.is_alive() for t in active_threads)
