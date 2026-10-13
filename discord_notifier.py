@@ -1,3 +1,4 @@
+import os
 import requests
 import threading
 import json
@@ -7,7 +8,8 @@ from pathlib import Path
 # =====================================================================
 # Discord Webhook 設定區
 # =====================================================================
-DISCORD_WEBHOOK_URL = "YOUR_DISCORD_WEBHOOK_URL_HERE"
+# 從環境變數讀取，避免把 Webhook 網址寫進程式碼
+DISCORD_WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL", "YOUR_DISCORD_WEBHOOK_URL_HERE")
 
 ATTRIBUTION_MAP = {
     "black_smoky": {

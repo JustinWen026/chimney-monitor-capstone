@@ -1,5 +1,6 @@
+from pathlib import Path
+
 from ultralytics import YOLO
-import os
 
 if __name__ == '__main__':
     # 2. 改用 YOLOv11s (或 yolov8s.pt / yolov9c.pt，格式都通用)
@@ -7,7 +8,7 @@ if __name__ == '__main__':
 
     model.train(
         # 使用你剛才確認的絕對路徑
-        data=r'D:\Programming\NCKU_Project_V2\datasets\data.yaml',
+        data=str(Path(__file__).resolve().parent / 'datasets' / 'data.yaml'),
         
         # 3. 學長要求：1000 輪 + Early Stopping
         epochs=1000,       

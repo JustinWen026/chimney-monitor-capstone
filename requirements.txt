@@ -1,0 +1,6 @@
+ultralytics>=8.3
+opencv-python
+matplotlib
+requests
+httpx
+mcp

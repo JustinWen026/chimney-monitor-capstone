@@ -1,7 +1,7 @@
 import os
 import cv2
 
-PROJECT_ROOT = r"D:\Programming\NCKU_Project_V2"
+PROJECT_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
 IMAGE_PATH = os.path.join(PROJECT_ROOT, "no_smoke.jpg")       # 你的無煙照片
 KLING_VIDEO_PATH = os.path.join(PROJECT_ROOT, "kling_output.mp4") # 可靈生成的11秒影片
 OUTPUT_PATH = os.path.join(PROJECT_ROOT, "test_video.mp4")       # 最終合成的完美影片

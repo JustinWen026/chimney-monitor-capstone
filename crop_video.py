@@ -1,7 +1,7 @@
 import os
 import cv2
 
-PROJECT_ROOT = r"D:\Programming\NCKU_Project_V2"
+PROJECT_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
 # 輸入：你合成好的 21 秒原始影片 (含浮水印和 AI 進度條)
 INPUT_VIDEO = os.path.join(PROJECT_ROOT, "test_video.mp4")      
 # 輸出：完美乾淨的影片

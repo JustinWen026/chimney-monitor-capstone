@@ -7,7 +7,7 @@ import os
 model = YOLO('yolo11n.pt')
 
 # 2. 定義你的圖片路徑 (請確認這兩個檔案都在同一個資料夾下)
-img_list = ['smoke1.png', 'smoke2.png'] 
+img_list = ['results/v1/smoke1.png', 'results/v1/smoke2.png']
 
 plt.figure(figsize=(15, 10))
 plt.suptitle("Initial Inference Analysis on Factory Smoke Dataset", fontsize=16)
@@ -44,7 +44,7 @@ for i, img_path in enumerate(img_list):
     plt.title(f"Confidence Analysis: {img_path}")
 
 plt.tight_layout(rect=[0, 0.03, 1, 0.95])
-plt.savefig('final_report.png')
+plt.savefig('results/v1/baseline_coco_inference.png')
 print("\n" + "="*30)
-print("✅ 恭喜！對比報告 'final_report.png' 已生成！")
+print("✅ 恭喜！對比報告 'results/v1/baseline_coco_inference.png' 已生成！")
 print("="*30)

@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# 編輯器 / 系統
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# 資料集（請自行從 Roboflow 下載，見 README）
+datasets/*/
+datasets/**/*.cache
+*.zip
+
+# YOLO 訓練與推論輸出
+runs/
+yolo11*.pt
+yolo26*.pt
+yolov8*.pt
+
+# 執行時產生的告警截圖與輸出
+alerts/
+email_preview.html.bak
+
+# 機密
+.env

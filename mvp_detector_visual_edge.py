@@ -15,14 +15,14 @@ from datetime import datetime
 from ultralytics import YOLO
 
 from discord_notifier import send_discord_alert_async
-from ablation_study import trigger_ablation_v4_async  # v6.4: 真實數據注入消融實驗
+from ablation_study import trigger_ablation_v6_async  # v6.4: 真實數據注入消融實驗
 
 # ==============================================================================
 # 1. 系統參數配置
 # ==============================================================================
-PROJECT_ROOT        = r"D:\Programming\NCKU_Project_V2"
-VIDEO_PATH          = os.path.join(PROJECT_ROOT, "clean_video_perfect.mp4")
-MODEL_PATH          = os.path.join(PROJECT_ROOT, r"runs\detect\ncku_smoke_8to2_v2\weights\best.pt")
+PROJECT_ROOT        = os.path.dirname(os.path.abspath(__file__))
+VIDEO_PATH          = os.path.join(PROJECT_ROOT, "assets", "clean_video_perfect.mp4")
+MODEL_PATH          = os.path.join(PROJECT_ROOT, "weights", "best.pt")
 SCREENSHOT_DIR      = os.path.join(PROJECT_ROOT, "alerts")
 
 ALERT_THRESHOLD_SEC = 3.0    
@@ -300,7 +300,7 @@ def main():
         frame_counter += 1
         current_time = time.time()
 
-        results         = model(frame, device=0, verbose=False)
+        results         = model(frame, verbose=False)
         annotated_frame = results[0].plot()
 
         t_pre  = results[0].speed.get('preprocess',  0.0)
@@ -347,7 +347,7 @@ def main():
                     
                     # 💡 串接優化：異步連動全新的 A/B 測試引擎
                     # 
-                    # trigger_ablation_v4_async(alert)  # v6.4: 真實 alert_info 注入
+                    # trigger_ablation_v6_async(alert)  # v6.4: 真實 alert_info 注入
                     
         else:
             if has_any_smoke:

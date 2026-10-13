@@ -2,7 +2,7 @@ from ultralytics import YOLO
 import time
 import os
 
-MODEL_PATH = r'D:\Programming\NCKU_Project_V2\runs\detect\ncku_smoke_8to2_v2\weights\best.pt'
+MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'weights', 'best.pt')
 model = YOLO(MODEL_PATH) if os.path.exists(MODEL_PATH) else None
 
 def generate_realistic_gmail_ui(smoke_type, conf):
@@ -81,7 +81,7 @@ if __name__ == '__main__':
     print("="*60)
     time.sleep(1)
     
-    IMAGE_NAME = 'test_chimney.png'
+    IMAGE_NAME = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'assets', 'test_chimney.png')
     class_name, conf, triggered = "black_smoky", 0.806, True
     
     if os.path.exists(IMAGE_NAME) and model is not None:
